@@ -19,6 +19,7 @@ namespace secret_project
         {
             await Task.Delay(50); //ummm this prevents some issues
             Server.FriendlyFire = true; // this is gun game from cs, everyone needs to fight each other
+            nowinner = true;
             foreach (Player plr in Player.GetPlayers())
             {
                 
@@ -27,6 +28,7 @@ namespace secret_project
                 
             }
         }
+        bool nowinner;
 
         public void spawnproperly(Player plr, bool respawn = false)
         {
@@ -37,7 +39,27 @@ namespace secret_project
                 plr.Position = new Vector3(plr.Position.x, plr.Position.y + 0.7f, plr.Position.z);
             }
             plr.ClearInventory();
+            if (Storage.currentGuns[plr] < 0) { Storage.currentGuns[plr] = 0; }
             plr.AddItem(Storage.gungamelist[Storage.currentGuns[plr]]);
+        }
+
+        [PluginEvent(ServerEventType.PlayerDeath)]
+        public void PlayerDeath(PlayerDeathEvent ev)
+        {
+            Storage.currentGuns[ev.Attacker] += 1;
+            if (Storage.currentGuns[ev.Attacker] > Storage.gungamelist.Count-1 && nowinner)
+            {
+                nowinner = false; // there is in fact a winner
+                Round.End();
+                foreach (Player plr in Player.GetPlayers())
+                {
+                    HintHandlers.InitPlayer(plr);
+                    HintHandlers.AddFadingText(plr, 900, $"<b>{ev.Attacker.Nickname} wins!</b>", 10f);
+                }
+            }
+            spawnproperly(ev.Attacker);
+            Storage.currentGuns[ev.Player] -= 1;
+            spawnproperly(ev.Player, true);
         }
     }
 }
