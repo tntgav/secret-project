@@ -30,8 +30,11 @@ namespace secret_project
         }
         bool nowinner;
 
-        public void spawnproperly(Player plr, bool respawn = false)
+        public void spawnproperly(Player plr, bool respawn = false, int change = 0)
         {
+            if (plr == null) { return; }
+            if (!Storage.currentGuns.ContainsKey(plr)) { Storage.currentGuns.Add(plr, 0); }
+            Log.Debug($"{string.Join(", ", Storage.currentGuns)}");
             if (respawn)
             {
                 plr.SetRole(RoleTypeId.ChaosConscript);
@@ -39,32 +42,44 @@ namespace secret_project
                 plr.Position = new Vector3(plr.Position.x, plr.Position.y + 0.7f, plr.Position.z);
             }
             plr.ClearInventory();
+            Storage.currentGuns[plr] += change;
             if (Storage.currentGuns[plr] < 0) { Storage.currentGuns[plr] = 0; }
-            plr.AddItem(Storage.gungamelist[Storage.currentGuns[plr]]);
-            plr.AddAmmo(ItemType.Ammo12gauge, ushort.MaxValue);
-            plr.AddAmmo(ItemType.Ammo44cal, ushort.MaxValue);
-            plr.AddAmmo(ItemType.Ammo556x45, ushort.MaxValue);
-            plr.AddAmmo(ItemType.Ammo762x39, ushort.MaxValue);
-            plr.AddAmmo(ItemType.Ammo9x19, ushort.MaxValue);
+            
+            plr.AddItem(ItemType.ArmorHeavy);
+            plr.AddItem(ItemType.KeycardO5);
+            try 
+            { 
+                plr.AddItem(Storage.gungamelist[Storage.currentGuns[plr]]);
+            } catch (Exception e) 
+            { 
+                Log.Debug($"index of {Storage.currentGuns[plr]}. exception {e}");
+            }
+            ushort ammocount = 5000;
+            plr.AddAmmo(ItemType.Ammo12gauge, ammocount);
+            plr.AddAmmo(ItemType.Ammo44cal, ammocount);
+            plr.AddAmmo(ItemType.Ammo556x45, ammocount);
+            plr.AddAmmo(ItemType.Ammo762x39, ammocount);
+            plr.AddAmmo(ItemType.Ammo9x19, ammocount);
         }
 
         [PluginEvent(ServerEventType.PlayerDeath)]
         public void PlayerDeath(PlayerDeathEvent ev)
         {
-            Storage.currentGuns[ev.Attacker] += 1;
-            if (Storage.currentGuns[ev.Attacker] > Storage.gungamelist.Count-1 && nowinner)
+            if (ev.Attacker != null)
             {
-                nowinner = false; // there is in fact a winner
-                Round.End();
-                foreach (Player plr in Player.GetPlayers())
+                if (Storage.currentGuns[ev.Attacker] > Storage.gungamelist.Count - 1 && nowinner)
                 {
-                    HintHandlers.InitPlayer(plr);
-                    HintHandlers.AddFadingText(plr, 900, $"<b>{ev.Attacker.Nickname} wins!</b>", 10f);
+                    nowinner = false; // there is in fact a winner
+                    Round.End();
+                    foreach (Player plr in Player.GetPlayers())
+                    {
+                        HintHandlers.InitPlayer(plr);
+                        HintHandlers.AddFadingText(plr, 900, $"<b>{ev.Attacker.Nickname} wins!</b>", 10f);
+                    }
                 }
+                spawnproperly(ev.Attacker, false, 1);
             }
-            spawnproperly(ev.Attacker);
-            Storage.currentGuns[ev.Player] -= 1;
-            spawnproperly(ev.Player, true);
+            spawnproperly(ev.Player, true, -1);
         }
     }
 }
