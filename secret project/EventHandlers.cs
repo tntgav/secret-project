@@ -24,7 +24,7 @@ namespace secret_project
             {
                 
                 Storage.currentGuns.Add(plr, 0);
-                spawnproperly(plr);
+                spawnproperly(plr, true);
                 
             }
         }
@@ -41,6 +41,11 @@ namespace secret_project
             plr.ClearInventory();
             if (Storage.currentGuns[plr] < 0) { Storage.currentGuns[plr] = 0; }
             plr.AddItem(Storage.gungamelist[Storage.currentGuns[plr]]);
+            plr.AddAmmo(ItemType.Ammo12gauge, ushort.MaxValue);
+            plr.AddAmmo(ItemType.Ammo44cal, ushort.MaxValue);
+            plr.AddAmmo(ItemType.Ammo556x45, ushort.MaxValue);
+            plr.AddAmmo(ItemType.Ammo762x39, ushort.MaxValue);
+            plr.AddAmmo(ItemType.Ammo9x19, ushort.MaxValue);
         }
 
         [PluginEvent(ServerEventType.PlayerDeath)]
