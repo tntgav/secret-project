@@ -33,6 +33,9 @@ using System.Xml.Linq;
 using System.Collections;
 using System.Runtime.CompilerServices;
 using Log = PluginAPI.Core.Log;
+using Display = RueI.Displays.Display;
+using MEC;
+using System.Xml.Schema;
 namespace secret_project
 {
     internal class HintHandlers
@@ -98,15 +101,22 @@ namespace secret_project
 
         }
 
-        public static DynamicElement DynamicText(Player plr, int position, Func<DynamicElement> content)
+        public static async void text(Player plr, int position, string content, float time)
         {
+            InitPlayer(plr);
             ReferenceHub hub = plr.ReferenceHub;
             DisplayCore core = DisplayCore.Get(hub);
-            IElemReference<DynamicElement> DynElemRef = DisplayCore.GetReference<DynamicElement>();
-            RueI.Displays.Display display = new RueI.Displays.Display(core);
-            DynamicElement dynElem = core.GetElementOrNew(DynElemRef, content);
+            IElemReference<SetElement> idk = DisplayCore.GetReference<SetElement>();
+            SetElement element = core.GetElementOrNew(idk, () => new SetElement(position, content));
+            Display disp = new Display(core);
             core.Update();
-            return dynElem;
+
+            Timing.CallDelayed(time, () =>
+            {
+                disp.Elements.Remove(element);
+                element.Enabled = false;
+                core.Update();
+            });
         }
     }
 }
