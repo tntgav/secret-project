@@ -22,6 +22,7 @@ namespace secret_project
             EventManager.RegisterEvents(EventHandlers);
             EventManager.RegisterAllEvents(EventHandlers);
             EventManager.RegisterEvents(this);
+            EventManager.RegisterEvents<mapeditorunborn>(this);
             RueIMain.EnsureInit();
             Harmony _harmony;
             _harmony = new Harmony("com.tpd.patches");

@@ -12,6 +12,7 @@ using MapGeneration;
 using MapGeneration.Distributors;
 using MEC;
 using PlayerRoles;
+using PlayerRoles.FirstPersonControl;
 using PlayerRoles.PlayableScps.Scp049;
 using PlayerRoles.PlayableScps.Scp096;
 using PlayerRoles.PlayableScps.Scp173;
@@ -52,10 +53,16 @@ namespace secret_project
             }
 
             RunCoroutine();
-            state = RoundState.Buy;
-            counter = 30;
-            foreach (Player plr in Player.GetPlayers()) { Handlers.AddEffect<Slowness>(plr, 1, 70); plr.AddItem(ItemType.Radio); }
-            Timing.CallPeriodically(30, 1, () => { counter--; });
+            //state = RoundState.Buy;
+            //counter = 30;
+            foreach (Player plr in Player.GetPlayers()) 
+            { 
+                plr.SetRole(RoleTypeId.Tutorial);
+                plr.AddItem(ItemType.Radio);
+                FpcNoclip.PermitPlayer(plr.ReferenceHub);
+                plr.Position = new Vector3(0, 1001, -40);
+            }
+            //Timing.CallPeriodically(30, 1, () => { counter--; });
             Timing.CallDelayed(30, () => { state = RoundState.Fight; });
             
         }
@@ -76,7 +83,7 @@ namespace secret_project
                 if (!Storage.bsr.ContainsKey(plr)) Storage.bsr.Add(plr, 0);
                 if (Storage.bsr[plr] > 0) { Storage.bsr[plr] -= 1; Storage.bsr[plr] /= 2; }
                 if (Storage.bsr[plr] < 0) { Storage.bsr[plr] = 0; }
-                foreach (ItemBase item in plr.Items) { Handlers.RegenerateGun(item, interval); }
+                foreach (ItemBase item in plr.Items) { Handlers.RegenerateGun(item, interval); Log.Debug("regenerating guns"); }
 
                 if (plr.Role == RoleTypeId.Spectator) return;
                 string built = "";
@@ -84,42 +91,42 @@ namespace secret_project
                 {
                     HintHandlers.text(plr, 400, $"<b><size=40>Buy phase ends in {counter} seconds<br></size><size=35>Toggle radio to buy, change range to swap item.</size></b>", 1);
                 }
-                HintHandlers.text(plr, 125, $"<size=30><align=left><color=#00ff00>${Storage.PlayerMoney[plr]}</color><br><align=left><color=#ff0000>Spread: {Handlers.SpreadCalculation(plr)}</color></size></align>", 1);
+                //HintHandlers.text(plr, 125, $"<size=30><align=left><color=#00ff00>${Storage.PlayerMoney[plr]}</color><br><align=left><color=#ff0000>Spread: {Handlers.SpreadCalculation(plr)}</color></size></align>", 1);
                 //HintHandlers.text(plr, 125, $"<size=30><align=left><color=#00ff00>${Storage.PlayerMoney[plr]}</color><br><align=left><color=#ff0000>in void? {Handlers.InVoid(plr)}</color></size></align>", 1);
             }
         }
 
-        [PluginEvent(ServerEventType.PlayerRadioToggle)]
-        public bool PlayerRadioToggle(PlayerRadioToggleEvent ev)
-        {
-            Log.Info("dropped item. buying");
-            int val = Storage.selection[ev.Player];
-            GunInfo selected = Storage.guncosts[(Storage.guncosts.Keys.ToArray()[val])];
-            if (Storage.PlayerMoney[ev.Player] >= selected.cost)
-            {
-                Storage.PlayerMoney[ev.Player] -= selected.cost;
-                Handlers.GiveFullGun(ev.Player.ReferenceHub, selected.item);
-                HintHandlers.text(ev.Player, 300, $"<b>Bought {selected.item} for ${selected.cost}</b>", 1f);
-            }
-            return false;
-        }
-
-        public static string lines(int x) { return string.Concat(Enumerable.Repeat("<br>", x)); }
-
-        [PluginEvent(ServerEventType.PlayerChangeRadioRange)]
-        public bool PlayerChangeRadioRange(PlayerChangeRadioRangeEvent ev)
-        {
-            if (state == RoundState.Buy)
-            {
-                Log.Info("changed item. swapping");
-                Storage.selection[ev.Player]++;
-                if (Storage.selection[ev.Player] > Storage.guncosts.Count - 1) { Storage.selection[ev.Player] = 0; }
-                int val = Storage.selection[ev.Player];
-                GunInfo selected = Storage.guncosts[(Storage.guncosts.Keys.ToArray()[val])];
-                HintHandlers.text(ev.Player, 300, $"</align><b>{selected.item}<br><color=#00ff00>Costs ${selected.cost}. Earns ${selected.killReward} on kill.</b>", 1f);
-            }
-            return state != RoundState.Buy;
-        }
+        //[PluginEvent(ServerEventType.PlayerRadioToggle)]
+        //public bool PlayerRadioToggle(PlayerRadioToggleEvent ev)
+        //{
+        //    Log.Info("dropped item. buying");
+        //    int val = Storage.selection[ev.Player];
+        //    GunInfo selected = Storage.guncosts[(Storage.guncosts.Keys.ToArray()[val])];
+        //    if (Storage.PlayerMoney[ev.Player] >= selected.cost)
+        //    {
+        //        Storage.PlayerMoney[ev.Player] -= selected.cost;
+        //        Handlers.GiveFullGun(ev.Player.ReferenceHub, selected.item);
+        //        HintHandlers.text(ev.Player, 300, $"<b>Bought {selected.item} for ${selected.cost}</b>", 1f);
+        //    }
+        //    return false;
+        //}
+        //
+        //public static string lines(int x) { return string.Concat(Enumerable.Repeat("<br>", x)); }
+        //
+        //[PluginEvent(ServerEventType.PlayerChangeRadioRange)]
+        //public bool PlayerChangeRadioRange(PlayerChangeRadioRangeEvent ev)
+        //{
+        //    if (state == RoundState.Buy)
+        //    {
+        //        Log.Info("changed item. swapping");
+        //        Storage.selection[ev.Player]++;
+        //        if (Storage.selection[ev.Player] > Storage.guncosts.Count - 1) { Storage.selection[ev.Player] = 0; }
+        //        int val = Storage.selection[ev.Player];
+        //        GunInfo selected = Storage.guncosts[(Storage.guncosts.Keys.ToArray()[val])];
+        //        HintHandlers.text(ev.Player, 300, $"</align><b>{selected.item}<br><color=#00ff00>Costs ${selected.cost}. Earns ${selected.killReward} on kill.</b>", 1f);
+        //    }
+        //    return state != RoundState.Buy;
+        //}
 
         [PluginEvent(ServerEventType.PlayerDeath)]
         public void PlayerDeath(PlayerDeathEvent ev)

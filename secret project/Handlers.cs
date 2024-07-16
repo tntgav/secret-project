@@ -35,7 +35,8 @@ namespace secret_project
                     this ThrowableItem item,
                     Vector3 position,
                     float fuseTime = -1f,
-                    Player owner = null
+                    Player owner = null,
+                    Vector3 velocity = new Vector3()
         )
         {
             TimeGrenade grenade = (TimeGrenade)UnityEngine.Object.Instantiate(item.Projectile, position, Quaternion.identity);
@@ -43,6 +44,8 @@ namespace secret_project
                 grenade._fuseTime = fuseTime;
             grenade.NetworkInfo = new PickupSyncInfo(item.ItemTypeId, item.Weight, item.ItemSerial);
             grenade.PreviousOwner = new Footprint(owner != null ? owner.ReferenceHub : ReferenceHub.HostHub);
+            PickupStandardPhysics phys = grenade.PhysicsModule as PickupStandardPhysics;
+            phys.Rb.velocity = velocity;
             NetworkServer.Spawn(grenade.gameObject);
             grenade.ServerActivate();
         }
@@ -74,19 +77,69 @@ namespace secret_project
             return clone;
         }
 
+        public static Vector3 CalculateInitialVelocity(Vector3 start, Vector3 end, float gravity)
+        {
+            Vector3 displacement = end - start;
+            Vector3 displacementXZ = new Vector3(displacement.x, 0, displacement.z);
+
+            float time = Mathf.Sqrt(-2 * displacement.y / gravity) + Mathf.Sqrt(2 * (displacement.y + gravity * Mathf.Sqrt(displacementXZ.magnitude)) / gravity);
+
+            Vector3 velocityY = Vector3.up * Mathf.Sqrt(-2 * gravity * displacement.y);
+            Vector3 velocityXZ = displacementXZ / time;
+
+            return velocityXZ + velocityY * -Mathf.Sign(gravity);
+        }
+
+        public static PrimitiveObjectToy SpawnPrim(Vector3 pos, Vector3 scale, Vector3 rotation, Color clr, PrimitiveType primtype, bool collision = true)
+        {
+            foreach (GameObject value in NetworkClient.prefabs.Values)
+            {
+                if (value.TryGetComponent(out PrimitiveObjectToy toy))
+                {
+                    //instantiate the cube
+                    PrimitiveObjectToy prim = UnityEngine.Object.Instantiate(toy, pos, Quaternion.Euler(rotation));
+                    prim.PrimitiveType = primtype;
+                    prim.MaterialColor = clr;
+                    prim.transform.localScale = scale;
+                    prim.PrimitiveFlags = PrimitiveFlags.Visible;
+                    prim.gameObject.AddComponent<BoxCollider>();
+                    prim.GetComponent<BoxCollider>().isTrigger = false;
+                    prim.GetComponent<BoxCollider>().center = pos;
+                    prim.GetComponent<BoxCollider>().size = scale;
+                    prim.GetComponent<BoxCollider>().enabled = true;
+
+                    if (collision) { prim.PrimitiveFlags = PrimitiveFlags.Collidable | PrimitiveFlags.Visible; } else { prim.PrimitiveFlags = PrimitiveFlags.Visible; }
+
+                    NetworkServer.Spawn(prim.gameObject);
+                    Log.Info("Object spawned!");
+                    return prim;
+                }
+            }
+            return null;
+        }
+
+
+
         public static void RegenerateGun(ItemBase item, int interval)
         {
             if (!(item is Firearm firearm)) { return; }
             if (!CustomItems.LiveCustoms.ContainsKey(item.ItemSerial)) { return; }
             CustomItemType type = CustomItems.LiveCustoms[item.ItemSerial];
+            float Regen = 0;
+            float rInterval = 1;
+            float Max = 200;
+            if (type == CustomItemType.GrenadeLauncher) { Regen = 1; rInterval = 30; Max = 3; }
+            if (type == CustomItemType.MiniNukeLauncher) { Regen = 5; rInterval = 1; Max = 5; }
+            if (type == CustomItemType.MitzeyScream) { Regen = 200; rInterval = 1; Max = 200; }
+            if (type == CustomItemType.LightningTest) { Regen = 200; rInterval = 1; Max = 200; }
+            if (type == CustomItemType.MinionGun) { Regen = 1; rInterval = 1; Max = 5; }
+            if (type == CustomItemType.GravityGun) { Regen = 1; rInterval = 3; Max = 5; }
+            if (type == CustomItemType.Grappler) { Regen = 1; rInterval = 3; Max = 5; }
+            if (type == CustomItemType.Arcer) { Regen = 10; rInterval = 3; Max = 50; }
 
-            if (type == CustomItemType.GrenadeLauncher && interval % 30 == 0)
+            if (interval % rInterval == 0)
             {
-                firearm.Status = new FirearmStatus(Convert.ToByte(Math.Min(firearm.Status.Ammo + 1, 30)), firearm.Status.Flags, firearm.Status.Attachments);
-            }
-            if (type == CustomItemType.MiniNukeLauncher)
-            {
-                firearm.Status = new FirearmStatus(Convert.ToByte(Math.Min(firearm.Status.Ammo + 5, 5)), firearm.Status.Flags, firearm.Status.Attachments);
+                firearm.Status = new FirearmStatus(Convert.ToByte(Math.Min(firearm.Status.Ammo + Regen, Max)), firearm.Status.Flags, firearm.Status.Attachments);
             }
         }
 
@@ -227,15 +280,35 @@ namespace secret_project
 
         public static void GrenadePosition(Vector3 position, Player plr)
         {
-            CreateThrowable(ItemType.GrenadeHE, plr).SpawnActive(position, 0.05f);
+            CreateThrowable(ItemType.GrenadeHE, plr).SpawnActive(position, 0.05f, plr);
         }
 
         public static void GrenadePosition(Vector3 position, int amount, Player plr)
         {
             for (int i = 0; i < amount;)
             {
-                CreateThrowable(ItemType.GrenadeHE, plr).SpawnActive(position, 0.05f);
+                CreateThrowable(ItemType.GrenadeHE, plr).SpawnActive(position, 0.05f, plr);
             }
+        }
+
+        public static RoomIdentifier NearestRoom(Vector3 pos)
+        {
+            float lowest = float.PositiveInfinity;
+            RoomIdentifier nearest = null;
+            foreach (RoomIdentifier room in RoomIdentifier.AllRoomIdentifiers)
+            {
+                if (room == null) continue;
+                if (Vector3.Distance(pos, room.transform.position) < lowest)
+                {
+                    lowest = Vector3.Distance(pos, room.transform.position);
+                    nearest = room;
+                }
+            }
+            return nearest;
+        }
+        public static int RangeInt(int min, int max)
+        {
+            return UnityEngine.Random.Range(min, max + 1); //max is exclusive and i want this to be inclusive
         }
 
         public static void SetEffect<T>(Player player, byte intensity, int addedDuration = 0) where T : StatusEffectBase
