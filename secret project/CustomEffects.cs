@@ -23,13 +23,26 @@ namespace secret_project
 
         private static Dictionary<Player, List<CustomEffect>> effects = new Dictionary<Player, List<CustomEffect>>();
 
-        public static void HandleEffects(Player plr)
+        public static void HandleEffects(Player plr = null)
         {
             //runs every frame on every player. very server taxing lmao
+            if (plr == null) { foreach (Player p in Player.GetPlayers())
+                {
+                    if (!effects.ContainsKey(plr)) continue;
+                    foreach (CustomEffect effect in effects[plr])
+                    {
+                        effect.duration -= EventHandlers.Rate;
+                        if (effect.duration <= 0) { RemoveEffect(plr, effect); continue; }
+                        HandleEffect(plr, effect);
+                    }
+                }
+                return;
+            }
+
             if (!effects.ContainsKey(plr)) return;
             foreach (CustomEffect effect in effects[plr])
             {
-                effect.duration -= Time.deltaTime;
+                effect.duration -= EventHandlers.Rate;
                 if (effect.duration <= 0) { RemoveEffect(plr, effect); continue; }
                 HandleEffect(plr, effect);
             }
@@ -37,7 +50,7 @@ namespace secret_project
 
         private static void HandleEffect(Player plr, CustomEffect effect)
         {
-            if (effect.type == EffectType.Wungus) { plr.Heal(((plr.Velocity.magnitude > 5 ? 1 : 0) * (plr.Velocity.magnitude / 2)) * Time.deltaTime); }
+            if (effect.type == EffectType.Wungus) { plr.Heal(((plr.Velocity.magnitude > 5 ? 1 : 0) * (plr.Velocity.magnitude / 2)) * EventHandlers.Rate); }
         }
 
         public static void RemoveEffect(Player plr, CustomEffect eff)

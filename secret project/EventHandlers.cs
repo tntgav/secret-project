@@ -72,7 +72,11 @@ namespace secret_project
 
         public int interval = 0;
 
-        public void RunCoroutine() { Timing.CallPeriodically(float.MaxValue / 2, 1, update); }
+        public static float Rate = 0.05f;
+
+        public void RunCoroutine() { Timing.CallPeriodically(float.MaxValue / 2, 1, update); Timing.CallPeriodically(float.MaxValue / 2, Rate, Effects); }
+
+        public void Effects() { CustomEffect.HandleEffects(); }
         public void update()
         {
             interval++;
