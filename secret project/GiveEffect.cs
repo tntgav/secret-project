@@ -13,12 +13,12 @@ using InventorySystem;
 namespace secret_project
 {
     [CommandHandler(typeof(RemoteAdminCommandHandler))]
-    public class GiveEffect : ICommand
+    public class GiveCustomEffect : ICommand
     {
         public bool SanitizeResponse => false;
-        public string Command => "GiveEffect";
+        public string Command => "GiveCustomEffect";
 
-        public string[] Aliases => new string[] { "a" };
+        public string[] Aliases => new string[] { "aa" };
 
         public string Description => "gives you a custom item";
 

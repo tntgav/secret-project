@@ -9,18 +9,19 @@ using System.Text;
 using System.Threading.Tasks;
 using PluginAPI.Core;
 using InventorySystem;
+using UnityEngine;
 
 namespace secret_project
 {
     [CommandHandler(typeof(RemoteAdminCommandHandler))]
-    public class SpawnCustomItem : ICommand
+    public class DropCustomItem : ICommand
     {
         public bool SanitizeResponse => false;
-        public string Command => "SpawnCustom";
+        public string Command => "DropCustom";
 
-        public string[] Aliases => new string[] { "a" };
+        public string[] Aliases => new string[] { "drc" };
 
-        public string Description => "gives you a custom item";
+        public string Description => "drops a custom item";
 
         public bool Execute(ArraySegment<string> arguments, ICommandSender sender, out string response)
         {
@@ -29,17 +30,15 @@ namespace secret_project
             Player plr = Player.Get(sender);
             if (Enum.TryParse(args[0], true, out CustomItemType type))
             {
-                ItemBase itemBase = plr.ReferenceHub.inventory.ServerAddItem(CustomItems.items[type]);
-                if (itemBase == null)
-                {
-                    response = "Generating item failed.";
-                    return false;
+                if (args.ElementAtOrDefault(1) != null) { for (int i = 0; i < int.Parse(args[1]); i++) {
+                        Handlers.DropCustom(plr.Position, type, Vector3.zero);
+                    } } else {
+                    Handlers.DropCustom(plr.Position, type, Vector3.zero);
                 }
-                if (!CustomItems.LiveCustoms.ContainsKey(itemBase.ItemSerial)) CustomItems.LiveCustoms.Add(itemBase.ItemSerial, type);
-                response = "Successfully given custom item!";
+                response = "successfully dropped";
                 return true;
-
-            } else
+            }
+            else
             {
                 response = "Failed to generate custom item type.";
                 return false;

@@ -2,6 +2,7 @@
 using HarmonyLib;
 using Interactables.Interobjects;
 using Interactables.Interobjects.DoorUtils;
+using InventorySystem.Items;
 using InventorySystem.Items.Firearms;
 using InventorySystem.Items.Firearms.Modules;
 using InventorySystem.Items.Jailbird;
@@ -28,6 +29,7 @@ using System.Net.Http.Headers;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using System.Threading.Tasks;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Windows.Speech;
@@ -45,7 +47,7 @@ namespace secret_project
             {
                 if (EventHandlers.AccuracyPatch)
                 {
-                    Log.Info("attempting patch of sbhr for perfect accuracy");
+                    Log.Info("hitreg patch");
                     if (!EventManager.ExecuteEvent(new PlayerShotWeaponEvent(__instance.Hub, __instance.Firearm)))
                     {
                         return false;
@@ -55,6 +57,17 @@ namespace secret_project
                     Vector3 randomspread = (new Vector3(UnityEngine.Random.value, UnityEngine.Random.value, UnityEngine.Random.value) - Vector3.one / 2f).normalized;
                     float factors = Handlers.SpreadCalculation(Player.Get(__instance.Hub));
                     ray.direction = Quaternion.Euler(randomspread * factors) * ray.direction;
+                    Player p = Player.Get(__instance.Hub);
+                    ItemBase cur = p.CurrentItem;
+                    if (CustomItems.LiveCustoms.ContainsKey(cur.ItemSerial))
+                    {
+                        if (CustomItems.LiveCustoms[cur.ItemSerial] == CustomItemType.AimbotGun)
+                        {
+                            Log.Info("aimbot gun shot ray alteration course magic bull shit");
+                            Player near = Handlers.NearestPlayer(p);
+                            ray.direction = Handlers.CalculateLookAtAngle(p.Camera.position, near.Camera.position);
+                        }
+                    } 
                     FirearmBaseStats baseStats = __instance.Firearm.BaseStats;
                     RaycastHit hit;
                     if (Physics.Raycast(ray, out hit, baseStats.MaxDistance(), StandardHitregBase.HitregMask))
@@ -72,12 +85,24 @@ namespace secret_project
                     }
                     Ray ray = new Ray(__instance.Hub.PlayerCameraReference.position, __instance.Hub.PlayerCameraReference.forward);
 
-                    Vector3 a = (new Vector3(UnityEngine.Random.value, UnityEngine.Random.value, UnityEngine.Random.value) - Vector3.one / 2f).normalized;
+                    Vector3 randomspread = (new Vector3(UnityEngine.Random.value, UnityEngine.Random.value, UnityEngine.Random.value) - Vector3.one / 2f).normalized;
                     FirearmBaseStats baseStats = __instance.Firearm.BaseStats;
-                    float num = baseStats.GetInaccuracy(__instance.Firearm, __instance.Firearm.AdsModule.ServerAds, __instance.Hub.GetVelocity().magnitude, __instance.Hub.IsGrounded());
-                    ray.direction = Quaternion.Euler(num * a) * ray.direction;
-
+                    IFpcRole fpc = (__instance.Hub.roleManager.CurrentRole as IFpcRole);
+                    float factors = baseStats.GetInaccuracy(__instance.Firearm, __instance.Firearm.AdsModule.ServerAds, fpc.FpcModule.Motor.Velocity.magnitude, fpc.FpcModule.IsGrounded);
+                    ray.direction = Quaternion.Euler(randomspread * factors) * ray.direction;
+                    
                     RaycastHit hit;
+                    Player p = Player.Get(__instance.Hub);
+                    ItemBase cur = p.CurrentItem;
+                    if (CustomItems.LiveCustoms.ContainsKey(cur.ItemSerial))
+                    {
+                        if (CustomItems.LiveCustoms[cur.ItemSerial] == CustomItemType.AimbotGun)
+                        {
+                            Log.Info("aimbot gun shot ray alteration course magic bull shit");
+                            Player near = Handlers.NearestPlayer(p);
+                            ray.direction = Handlers.CalculateLookAtAngle(p.Camera.position, near.Camera.position);
+                        }
+                    }
                     if (Physics.Raycast(ray, out hit, baseStats.MaxDistance(), StandardHitregBase.HitregMask))
                     {
                         __instance.ServerProcessRaycastHit(ray, hit);
@@ -90,6 +115,32 @@ namespace secret_project
 
             public static void Postfix(SingleBulletHitreg __instance)
             {
+            }
+        }
+
+        [HarmonyPatch(typeof(JailbirdItem), nameof(JailbirdItem.ServerAttack))]
+        public static class jcustom
+        {
+            public static bool Prefix(JailbirdItem __instance)
+            {
+                return true;
+            }
+
+            public static void Postfix(JailbirdItem __instance)
+            {
+                if (CustomItems.LiveCustoms.ContainsKey(__instance.ItemSerial))
+                {
+                    Player p = Player.Get(__instance.Owner);
+                    CustomItems.UseCustomItem(p, p.CurrentItem, CustomItems.LiveCustoms[__instance.ItemSerial]);
+                    if (CustomItems.LiveCustoms[__instance.ItemSerial] == CustomItemType.Hyperion)
+                    {
+                        __instance.TotalChargesPerformed = 0;
+                        __instance._hitreg.TotalMeleeDamageDealt = 0;
+                        __instance._chargeDuration = float.MaxValue;
+                        __instance._chargeReadyTime = 0f;
+                        //__instance._charging = true;
+                    }
+                }
             }
         }
     }
