@@ -1,5 +1,6 @@
 ﻿using CommandSystem.Commands.RemoteAdmin;
 using CustomPlayerEffects;
+using MEC;
 using PlayerRoles;
 using PlayerRoles.FirstPersonControl;
 using PlayerRoles.Visibility;
@@ -49,7 +50,16 @@ namespace secret_project
         {
             //Log.Info($"Handling effect {effect.type} for {plr.Nickname}");
             if (effect.type == EffectType.Wungus) { plr.Health += (((plr.Velocity.magnitude > 5 ? 1 : 0) * (plr.Velocity.magnitude / 2)) * EventHandlers.Rate * effect.intensity); if (plr.Health > 100 + Math.Pow(2, effect.intensity)) plr.Health = 100 + (float)Math.Pow(2, effect.intensity); }
-            if (effect.type == EffectType.Shattering) { plr.Damage(effect.intensity, "Crushed by the void."); effect.intensity = (int)Math.Ceiling(effect.intensity * 1.1); Log.Info($"Dealt {effect.intensity} damage to {plr.Nickname}. {effect.intensity - 1} ticks left of shattering."); }        }
+            if (effect.type == EffectType.Shattering) { plr.Damage(effect.intensity, "Shattered into a million pieces"); effect.intensity += 1; }
+            if (effect.type == EffectType.Godly && plr.Health <= 25)
+            {
+                plr.ReferenceHub.characterClassManager.GodMode = true;
+                Handlers.CreateThrowable(ItemType.GrenadeHE).SpawnActive(plr.Position, 0.05f, plr);
+                Timing.CallDelayed(0.2f, () => { plr.ReferenceHub.characterClassManager.GodMode = false; });
+                plr.Heal(100);
+                RemoveEffect(plr, effect);
+            }
+        }
 
         public static void RemoveEffect(Player plr, CustomEffect eff)
         {
@@ -97,7 +107,7 @@ namespace secret_project
         {
             Wungus,
             Shattering,
-            Silent,
+            Godly,
         }
     }
 }

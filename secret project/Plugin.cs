@@ -13,7 +13,7 @@ namespace secret_project
 
         private static EventHandlers EventHandlers { get; set; }
 
-        [PluginEntryPoint("ummmm", "1.0.0", "i dont know what this plugin does yet", "cat")]
+        [PluginEntryPoint("pluginName", "1.0.0", "description", "author")]
         void LoadPluginAPI()
         {
             Instance = this;
@@ -21,8 +21,6 @@ namespace secret_project
             EventHandlers = new EventHandlers();
             EventManager.RegisterEvents(EventHandlers);
             EventManager.RegisterAllEvents(EventHandlers);
-            EventManager.RegisterEvents(this);
-            //EventManager.RegisterEvents<mapeditorunborn>(this);
             RueIMain.EnsureInit();
             Harmony _harmony;
             _harmony = new Harmony("com.tpd.patches");

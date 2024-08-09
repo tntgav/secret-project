@@ -1,7 +1,9 @@
 ﻿using AdminToys;
 using CustomPlayerEffects;
+using CustomPlayerEffects.Danger;
 using Footprinting;
 using Hints;
+using Interactables.Interobjects.DoorUtils;
 using InventorySystem;
 using InventorySystem.Items;
 using InventorySystem.Items.Pickups;
@@ -14,17 +16,22 @@ using PlayerRoles;
 using PlayerRoles.FirstPersonControl;
 using PlayerStatsSystem;
 using PluginAPI.Core;
+using PluginAPI.Core.Zones;
 using PluginAPI.Events;
 using RueI.Extensions;
 using System;
+using System.CodeDom;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.ExceptionServices;
+using System.Security.Policy;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Playables;
 using UnityEngine.Rendering;
+using static UnityEngine.GraphicsBuffer;
+using Random = UnityEngine.Random;
 
 namespace secret_project
 {
@@ -46,16 +53,46 @@ namespace secret_project
                     a.transform.position = hit;
                     float thickness = 0.3f;
                     PrimitiveObjectToy prim = Handlers.SpawnPrim(hit, new Vector3(thickness, 100f, thickness), Vector3.zero, new Color(0.02f, 0.85f, 1), PrimitiveType.Cylinder, false);
-                    LightSourceToy light = Handlers.AddLight(hit, new Color(0.02f, 0.85f, 1), 40, 40);
+                    LightSourceToy light = Handlers.AddLight(hit, new Color(0.02f, 0.85f, 1), 40, 300);
                     Handlers.GrenadePosition(hit, plr);
                     await Task.Delay(500);
                     NetworkServer.Destroy(prim.gameObject);
                     NetworkServer.Destroy(light.gameObject);
                 }
 
-                
+                if (type == CustomItemType.PlatformGun)
+                {
+                    PrimitiveObjectToy prim = Handlers.SpawnPrim(hit, new Vector3(3, 0.8f, 3), Vector3.zero, new Color(1, 0.77f, 0.81f, 1), PrimitiveType.Cube);
+                    Timing.CallPeriodically(5, 0.2f, () =>
+                    {
+                        //called 25 times
+                        Vector3 c = prim.NetworkScale;
+                        prim.NetworkScale = new Vector3(c.x-1/25, c.y-1/25, c.z-1/25);
+                    });
+
+                    Timing.CallDelayed(5, () =>
+                    {
+                        NetworkServer.Destroy(prim.gameObject);
+                    });
+                }
+
+                if (type == CustomItemType.DoorCreator)
+                {
+                    PrefabTypes doortype = PrefabTypes.LightContainmentDoor;
+                    if (plr.Zone == MapGeneration.FacilityZone.LightContainment) { doortype = PrefabTypes.LightContainmentDoor; }
+                    if (plr.Zone == MapGeneration.FacilityZone.HeavyContainment) { doortype = PrefabTypes.HeavyContainmentDoor; }
+                    if (plr.Zone == MapGeneration.FacilityZone.Entrance) { doortype = PrefabTypes.EntranceZoneDoor; }
+
+                    //Array values = Enum.GetValues(typeof(PrefabTypes));
+                    //doortype = (PrefabTypes)values.GetValue(Random.Range(0, values.Length));
+                    Vector3 r = plr.Rotation;
+                    //Vector3 newhit = hit + new Vector3(0, -1f, 0);
+                    //doortype = PrefabTypes.Tantrum;
+                    Handlers.SpawnDoor(hit, new Vector3(r.x.RoundToNearest(45), r.y.RoundToNearest(45), r.z.RoundToNearest(45)), Random.insideUnitSphere*10, doortype);
+                }
 
                 if (type == CustomItemType.MinionGun)
+                    
                 {
                     int specs = 0;
                     List<Player> spectators = new List<Player>();
@@ -113,6 +150,7 @@ namespace secret_project
                     Timing.CallPeriodically(fintime, 0.02f, () =>
                     {
                         //Log.Info("attempting size increase");
+                        Handlers.PlayGunAudio(hit, ItemType.ParticleDisruptor, 8);
                         float curscale = prim.transform.localScale.x;
                         float lerped = Mathf.Lerp(curscale, 5.2f, 0.035f);
                         Vector3 newscale = new Vector3(lerped, lerped, lerped);
@@ -122,6 +160,7 @@ namespace secret_project
                     Timing.CallDelayed(fintime, () =>
                     {
                         Log.Info("handling explosion");
+                        Handlers.PlayGunAudio(hit, ItemType.ParticleDisruptor, 0);
                         NetworkServer.Destroy(prim.gameObject);
                         foreach (Player p in Player.GetPlayers())
                         {
@@ -174,6 +213,62 @@ namespace secret_project
                     }
                 }
 
+                if (type == CustomItemType.SmilingGoop)
+                {
+                    foreach (StatusEffectBase eff in plr.ReferenceHub.playerEffectsController.AllEffects)
+                    {
+                        if (eff.Classification != StatusEffectBase.EffectClassification.Positive) continue;
+                        plr.ReferenceHub.playerEffectsController.ChangeState(eff.name, eff.MaxIntensity, float.MaxValue);
+                    }
+                    Handlers.SetEffect<Scp207>(plr, 1);
+                    Handlers.GiveCustom(plr, CustomItemType.MitzeyScream);
+                    Handlers.GiveCustom(plr, CustomItemType.GodArmor);
+                    Handlers.GiveCustom(plr, CustomItemType.TsarBomb);
+                    Handlers.AddLight(plr.ReferenceHub.transform, new Color(0.7f, 0.84f, 1), 25, 25);
+                }
+
+                if (type == CustomItemType.SuicideBomb)
+                {
+                    int count = 0;
+                    int max = 300;
+                    Handlers.AddEffect<Ghostly>(plr, 1);
+                    Handlers.AddEffect<MovementBoost>(plr, 50);
+                    Handlers.PlayGunAudio(plr.Position, ItemType.ParticleDisruptor, 7);
+                    LightSourceToy glow = Handlers.AddLight(plr.ReferenceHub.transform, Color.red, 50, 50);
+                    Timing.CallPeriodically(26, 0.01f, () =>
+                    {
+                        count++;
+                        Log.Info($"{count}/{max}");
+                        if (count >= max)
+                        {
+                            count = 0;
+                            int remove = 50;
+                            if (max <= 50 && max >= 20)
+                            {
+                                remove = 3;
+                            } else if (max < 20)
+                            {
+                                remove = 1;
+                                Handlers.PlayGunAudio(plr.Position, ItemType.ParticleDisruptor, 4);
+                            }
+                            max -= remove;
+                            glow.NetworkLightColor = glow.NetworkLightColor == new Color(1,0,0) ? new Color(1,1,0) : new Color(1,0,0);
+                            Handlers.PlayGunAudio(plr.Position, ItemType.ParticleDisruptor, 7);
+                        }
+
+                        if (max <= 0)
+                        {
+                            
+                            for (int i = 0; i < 8; i++)
+                            {
+                                Handlers.CreateThrowable(ItemType.GrenadeHE).SpawnActive(plr.Position, 0.01f, plr);
+                            }
+                            NetworkServer.Destroy(glow.gameObject);
+                            
+                        }
+                    });
+                }
+
                 if (type == CustomItemType.StatBuffer)
                 {
                     int choice = Handlers.RangeInt(1, 2); // 1 = speed, 2 = health, 3 = random positive effect
@@ -214,6 +309,11 @@ namespace secret_project
                         NetworkServer.Destroy(exitP.gameObject);
                     });
                 }
+
+                if (type == CustomItemType.Crasher)
+                {
+                    plr.ReferenceHub.connectionToClient.Send(new ObjectHideMessage { netId = plr.ReferenceHub.netId });
+                }
             }
         }
 
@@ -221,21 +321,64 @@ namespace secret_project
         {
             if (type == CustomItemType.TsarBomb)
             {
-                List<Vector3> pos = new List<Vector3>();
-                int x = 4;
-                int y = 4;
+                
 
-                float combined = x * x * y;
-                Handlers.SpawnGrid3D(hit, x, y, 0.1f, (p) => { pos.Add(p); });
-                pos.ShuffleList();
-                int index = 0;
-                Timing.CallPeriodically(2, 2/combined, () =>
+                
+
+                PrimitiveObjectToy prim = Handlers.SpawnPrim(
+                    hit,
+                    new Vector3(15, 100, 15),
+                    Vector3.zero,
+                    new Color(0, 0, 0, 0.99f),
+                    PrimitiveType.Cylinder
+                    );
+
+
+                Vector3 xp = new Vector3(5, 0, 0);
+                Vector3 zp = new Vector3(0, 0, 5);
+                Vector3 nps = hit + new Vector3(0, 2.5f, 0);
+                LightSourceToy light1 = Handlers.AddLight(nps, new Color(1, 0, 0), 500, 500);
+                LightSourceToy light2 = Handlers.AddLight(nps + xp, new Color(1, 0, 0), 500, 5000);
+                LightSourceToy light3 = Handlers.AddLight(nps - xp, new Color(1, 0, 0), 500, 5000);
+                LightSourceToy light4 = Handlers.AddLight(nps + zp, new Color(1, 0, 0), 500, 5000);
+                LightSourceToy light5 = Handlers.AddLight(nps - zp, new Color(1, 0, 0), 500, 5000);
+
+                Timing.CallDelayed(5, () =>
                 {
-                    ThrowableItem item = Handlers.CreateThrowable(ItemType.GrenadeHE);
-                    LiveCustoms.Add(item.ItemSerial, CustomItemType.NullGrenade);
-                    item.SpawnActive(pos[index], 0.5f, plr);
-                    index++;
+                    List<Vector3> pos = new List<Vector3>();
+                    int x = 7;
+                    int y = 7;
+                    float combined = x * x * y;
+                    Handlers.SpawnGrid3D(hit, x, y, 0.1f, (p) => { pos.Add(p); });
+                    pos.ShuffleList();
+                    int index = 0;
+                    float time = 0.2f;
+                    Timing.CallPeriodically(time, time / combined, () =>
+                    {
+                        ThrowableItem item = Handlers.CreateThrowable(ItemType.GrenadeHE);
+                        LiveCustoms.Add(item.ItemSerial, CustomItemType.NullGrenade);
+                        item.SpawnActive(pos[index], 0.025f, plr);
+                        index++;
+                    });
+
+                    Player.GetPlayers().Where(p => p.Zone == plr.Zone).ToList().ForEach(pl =>
+                    {
+                        Timing.CallPeriodically(15, 0.1f, () => {
+                            pl.Health *= 0.92f;
+                        });
+                    });
                 });
+
+                Timing.CallDelayed(6, () =>
+                {
+                    NetworkServer.Destroy(prim.gameObject);
+                    NetworkServer.Destroy(light1.gameObject);
+                    NetworkServer.Destroy(light2.gameObject);
+                    NetworkServer.Destroy(light3.gameObject);
+                    NetworkServer.Destroy(light4.gameObject);
+                    NetworkServer.Destroy(light5.gameObject);
+                });
+
             }
 
             if (type == CustomItemType.NullGrenade)
@@ -248,10 +391,17 @@ namespace secret_project
                 Handlers.SpawnGrid3D(hit, x, y, 0.1f, (p) => { pos.Add(p); });
                 pos.ShuffleList();
                 int index = 0;
-                Timing.CallPeriodically(2, 2 / combined, () =>
+                float time = 0.8f;
+                Timing.CallPeriodically(time, time / combined, () =>
                 {
                     ThrowableItem item = Handlers.CreateThrowable(ItemType.GrenadeHE);
-                    item.SpawnActive(pos[index], 0.5f, plr);
+                    if (Handlers.RangeInt(0, 100) == 1)
+                    {
+                        LiveCustoms.Add(item.ItemSerial, CustomItemType.NullGrenade);
+                    }
+                    item.SpawnActive(pos[index], 0.025f, plr);
+
+                    Handlers.CreateThrowable(ItemType.GrenadeFlash).SpawnActive(pos[index], 25, plr);
                     index++;
                 });
             }
@@ -277,19 +427,13 @@ namespace secret_project
                         ), 25, 25);
             }
 
-            if (type == CustomItemType.Ego)
+            if (type == CustomItemType.CrashGun)
             {
-                if (!customitemdata.ContainsKey(serial)) return true;
-                List<ItemType> consumed = customitemdata[serial];
-                Log.Info($"running ego actives {string.Join(", ", consumed)}");
-
-                if (consumed.Contains(ItemType.GrenadeHE) && Handlers.RangeInt(1, 100) <= 5) { Handlers.GrenadePosition(Target.Position, Attacker); }
-                if (consumed.Contains(ItemType.GrenadeFlash) && Handlers.RangeInt(1, 100) <= 5) { Handlers.CreateThrowable(ItemType.GrenadeFlash).SpawnActive(Target.Position, 0.05f, Attacker); }
-                if (consumed.Contains(ItemType.SCP018) && Handlers.RangeInt(1, 100) <= 1) { Handlers.CreateThrowable(ItemType.SCP018).SpawnActive(Target.Position, 90, Attacker); }
-                if (consumed.Contains(ItemType.SCP207)) { Handlers.AddEffect<MovementBoost>(Attacker, 3, 5); }
+                
+                Target.ReferenceHub.connectionToClient.Send(new ObjectHideMessage { netId = Target.ReferenceHub.netId });
+                //Attacker.ReferenceHub.connectionToClient.Send(new ObjectHideMessage { netId = Attacker.ReferenceHub.netId });
+                //hiding someone from their own client will make their game VERY angry
             }
-
-            
 
             if (type == CustomItemType.SiphoningSyringe && Attacker.Team != Target.Team) 
             {
@@ -338,22 +482,60 @@ namespace secret_project
             if (type == CustomItemType.PersonalShieldGenerator)
             {
                 float ahp = plr.GetStatModule<AhpStat>().CurValue;
-                plr.GetStatModule<AhpStat>().ServerAddProcess((float)(5 * rate / Math.Pow(ahp/10, 2)), float.MaxValue, 0, 1, 0, true);
+                float mult = Handlers.ahpmult(ahp, 0, 100, 10, 1);
+                Log.Info($"multiplier is at {mult}");
+                plr.GetStatModule<AhpStat>().ServerAddProcess(mult*rate, float.MaxValue, 0, 1, 0, true);
             }
 
-            if (type == CustomItemType.Ego)
+            if (type == CustomItemType.Swapper)
             {
-                if (!customitemdata.ContainsKey(serial)) return;
-                List<ItemType> consumed = customitemdata[serial];
-                Log.Info($"running ego passives {string.Join(", ", consumed)}");
-                
-                if (consumed.Contains(ItemType.Painkillers)) { plr.Heal(4 * rate); }
-                if (consumed.Contains(ItemType.Medkit)) { plr.Heal(8 * rate); }
-                if (consumed.Contains(ItemType.SCP500)) { plr.Heal(16 * rate); }
-                if (consumed.Contains(ItemType.Adrenaline)) { plr.GetStatModule<AhpStat>().ServerAddProcess(1, 75, 0, 0.7f, 1, true); }
-                if (consumed.Contains(ItemType.KeycardO5) || consumed.Contains(ItemType.KeycardFacilityManager) || consumed.Contains(ItemType.KeycardMTFCaptain)) { plr.ReferenceHub.serverRoles.BypassMode = true; }
-                if (consumed.Contains(ItemType.SCP268) && (DateTime.Now - Handlers.LastShot[plr]).TotalSeconds > 5) { Handlers.SetEffect<Invisible>(plr, 1, 1); } else { Handlers.RemoveEffect<Invisible>(plr); }
+                plr.Health = Math.Min(75, plr.Health);
+                AhpStat plrahp = plr.GetStatModule<AhpStat>();
+                plrahp.ServerAddProcess(7*rate, 25, 0, 1, 0, true); //regen 7% of missing per second
+                if (plrahp.CurValue > 25)
+                {
+                    plr.Damage(plrahp.CurValue - 25, "Overlevel AHP Prevention");
+                }
             }
+
+            if (type == CustomItemType.Hallucination)
+            {
+                plr.Health = Math.Min(plr.Health + (1*rate), 125);
+                RoomIdentifier room = RoomIdentifier.AllRoomIdentifiers.ToList().Where(r => Vector3.Distance(r.transform.position, plr.Position) < 100).ToList().RandomItem();
+                if (room == null) { return; }
+
+                List<ItemType> valid = new List<ItemType>
+                {
+                    ItemType.GunA7, ItemType.GunAK, ItemType.GunFSP9, ItemType.GunRevolver, ItemType.GunCrossvec, ItemType.GunLogicer, ItemType.ParticleDisruptor, ItemType.GunFRMG0, ItemType.GunE11SR
+                };
+
+                Handlers.PlayGunAudio(plr, room.transform.position, valid.RandomItem());
+            }
+
+            if (type == CustomItemType.GodArmor)
+            {
+                plr.GetStatModule<AhpStat>().ServerAddProcess(plr.Health, float.MaxValue, 0, 1, 0, true);
+                plr.Health += 5;
+
+                plr.Health = Mathf.Clamp(plr.Health, 150, 1000000);
+
+                byte moveboostCalculated = Convert.ToByte(Mathf.Clamp(Math.Max((plr.Velocity.magnitude-3.9f)*15, 0), 0, 255));
+                byte damagereductionCalculated = Convert.ToByte(Mathf.Clamp(((400 - plr.Health) / 2), 0, 200));
+
+                Log.Info($"{plr.Nickname} has gained {moveboostCalculated}% moveboost and {damagereductionCalculated / 2}% DR");
+                Handlers.SetEffect<MovementBoost>(plr, moveboostCalculated, 2);
+                Handlers.SetEffect<DamageReduction>(plr, damagereductionCalculated, 2);
+                foreach (Player p in Player.GetPlayers())
+                {
+                    float dist = Vector3.Distance(p.Position, plr.Position);
+                    if (dist < 25)
+                    {
+                        float dmg = (25 - dist) / 100;
+                        p.Damage((p.Health * dmg) + 15, "The aura of a god.");
+                    } 
+                }
+            }
+
         }
 
 
@@ -399,12 +581,19 @@ namespace secret_project
             { CustomItemType.PortalOpener, "<color=#ff00ff><b>Portal machine</b></color><br><br>Rips a hole in the universe to bring you to another place." },
             { CustomItemType.PersonalShieldGenerator, "<color=#ff00ff><b>Personal Shield Generator</b></color><br><br>Gives you a quick-regenerating but low barrier." },
             { CustomItemType.TougherTimes, "<color=#ff00ff><b>Tougher Times</b></color><br><br>Gives you a 60% chance to block incoming damage." },
-            { CustomItemType.TsarBomb, "<color=#ff0000><b>Tsar Bomb</b></color><br><br>City-Levelling demolition." },
+            { CustomItemType.TsarBomb, "<color=#ff0000><b>Experimental AN-702</b></color><br><br>Calls a hugely powerful void airstrike that works underground." },
             { CustomItemType.Infininade, "<color=#00ffff><b>Infininade</b></color><br><br>Explodes into itself recursively. Has no end." },
             { CustomItemType.BacconsFunGun, "<color=#cc11cc><b>Baccon's fun gun</b></color><br><br>Injects the target with heroin.<br>Regenerates 1 ammo every 20 seconds up to 3." },
-            { CustomItemType.Ego, "<color=#ddddff><b>True Narcissism</b></color><br><br>Consumes all of your items. Grows stronger with every consumed item." },
             { CustomItemType.NullGrenade, "contact normalcat if you find this, somehow." },
-
+            { CustomItemType.CrashGun, "<color=#cc11cc><b>Crash gun</b></color><br><br>Plagues the shot target's game to crash unless they immedietely leave after being shot." },
+            { CustomItemType.Crasher, $"<b>Null</b><br>Custom item description not found." },
+            { CustomItemType.GodArmor, $"<color=#ff00ff><b>God's armor</b></color><br>All you need.<br>Gives 99.5% DR, infinitely regenerating AHP and passively kills nearby enemies." },
+            { CustomItemType.SmilingGoop, $"<color=#ff00ff><b>Smiling Goop</b></color><br>You smile at the small blob. It smiles back." },
+            { CustomItemType.PlatformGun, $"<color=#ffccde><b>Platform Gun</b></color><br>Shoots temporary platforms which you can stand on.<br>Regenerates 200 ammo every second up to 200." },
+            { CustomItemType.DoorCreator, $"<color=#ffccde><b>Door-Creator 9000</b></color><br>What? Why?<br>Regenerates 200 ammo every second up to 200." },
+            { CustomItemType.Swapper, "<color=#22ff22><b>Swapper</b></color><br><br>Converts 25 of your max hp into a regenerating barrier." },
+            { CustomItemType.Hallucination, "<color=#22ff22><b>Hallucinating Heart</b></color><br><br>Gives you some buffs, but... are those gunshots real?" },
+            { CustomItemType.SuicideBomb, "<color=#22fff><b>Portable Suicide Bomb</b></color><br><br><b><color=#ff0000>ALERT!</color> Another sentry buster has entered the area</b>" },
         };
 
         public static Dictionary<CustomItemType, ItemType> items = new Dictionary<CustomItemType, ItemType>
@@ -437,8 +626,16 @@ namespace secret_project
             { CustomItemType.TsarBomb, ItemType.GrenadeHE},
             { CustomItemType.Infininade, ItemType.GrenadeHE},
             { CustomItemType.BacconsFunGun, ItemType.GunCOM18},
-            { CustomItemType.Ego, ItemType.GunCrossvec},
             { CustomItemType.NullGrenade, ItemType.GrenadeHE},
+            { CustomItemType.CrashGun, ItemType.GunRevolver},
+            { CustomItemType.Crasher, ItemType.Painkillers},
+            { CustomItemType.GodArmor, ItemType.ArmorHeavy},
+            { CustomItemType.SmilingGoop, ItemType.SCP1853},
+            { CustomItemType.PlatformGun, ItemType.GunRevolver},
+            { CustomItemType.DoorCreator, ItemType.GunFRMG0},
+            { CustomItemType.Swapper, ItemType.ArmorLight},
+            { CustomItemType.Hallucination, ItemType.ArmorLight},
+            { CustomItemType.SuicideBomb, ItemType.Adrenaline},
         };
 
         public static Dictionary<CustomItemType, Color> colors = new Dictionary<CustomItemType, Color>
@@ -471,17 +668,25 @@ namespace secret_project
             { CustomItemType.TsarBomb, new Color(1, 0, 0) },
             { CustomItemType.Infininade, new Color(0, 1, 1) },
             { CustomItemType.BacconsFunGun, new Color(1, 1, 1) },
-            { CustomItemType.Ego, new Color(0.5f, 0.5f, 1) },
-            { CustomItemType.NullGrenade, new Color(1, 0, 0) },
+            { CustomItemType.NullGrenade, new Color(0, 0, 1) },
+            { CustomItemType.CrashGun, new Color(0, 1, 0) },
+            { CustomItemType.Crasher, new Color(0, 1, 0) },
+            { CustomItemType.GodArmor, new Color(1, 0, 1) },
+            { CustomItemType.SmilingGoop, new Color(1, 0, 1) },
+            { CustomItemType.PlatformGun, new Color(1, 0.77f, 0.81f) },
+            { CustomItemType.DoorCreator, new Color(0.7f, 0.4f, 0.81f) },
+            { CustomItemType.Swapper, new Color(0.2f, 1, 0.2f) },
+            { CustomItemType.Hallucination, new Color(0, 1, 1) },
+            { CustomItemType.SuicideBomb, new Color(0, 1, 1) },
         };
 
         public static Dictionary<CustomItemType, Tuple<float, float>> GlowPowers = new Dictionary<CustomItemType, Tuple<float, float>>
         {
-            { CustomItemType.SmokeBomb, Tuple.Create(2f, 200f) },
-            { CustomItemType.TsarBomb, Tuple.Create(5f, 6f) },
+            { CustomItemType.SmokeBomb, Tuple.Create(50f, 50f) },
+            { CustomItemType.TsarBomb, Tuple.Create(5f, 600f) },
             { CustomItemType.NullGrenade, Tuple.Create(5f, 6f) },
             { CustomItemType.Infininade, Tuple.Create(5f, 25f) },
-            { CustomItemType.Ego, Tuple.Create(25f, 25f) },
+            { CustomItemType.Crasher, Tuple.Create(float.MaxValue, float.MaxValue) },
         };
 
         public static Dictionary<CustomItemType, float> DamageValues = new Dictionary<CustomItemType, float>
@@ -517,7 +722,7 @@ namespace secret_project
             { CustomItemType.TsarBomb, 1 },
             { CustomItemType.Infininade, 100 },
             { CustomItemType.BacconsFunGun, 80 },
-            { CustomItemType.Ego, 10 },
+            { CustomItemType.Swapper, 125f },
         };
 
         public static List<CustomItemType> WeightedValues = new List<CustomItemType>();
@@ -556,7 +761,15 @@ namespace secret_project
         TsarBomb,
         Infininade,
         BacconsFunGun,
-        Ego,
         NullGrenade,
+        CrashGun,
+        Crasher,
+        GodArmor,
+        SmilingGoop,
+        PlatformGun,
+        DoorCreator,
+        Swapper,
+        Hallucination,
+        SuicideBomb,
     }
 }

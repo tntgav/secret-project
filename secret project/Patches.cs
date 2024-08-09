@@ -12,9 +12,12 @@ using InventorySystem.Items.ThrowableProjectiles;
 using MapGeneration;
 using MapGeneration.Distributors;
 using MEC;
+using Mirror;
 using PlayerRoles;
 using PlayerRoles.FirstPersonControl;
 using PlayerRoles.PlayableScps.Scp049;
+using PlayerRoles.PlayableScps.Scp079;
+using PlayerRoles.PlayableScps.Scp079.Pinging;
 using PlayerRoles.PlayableScps.Scp096;
 using PlayerRoles.PlayableScps.Scp173;
 using PlayerStatsSystem;
@@ -22,10 +25,12 @@ using PluginAPI.Core;
 using PluginAPI.Core.Attributes;
 using PluginAPI.Enums;
 using PluginAPI.Events;
+using RelativePositioning;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using System.Threading.Tasks;
@@ -143,5 +148,10 @@ namespace secret_project
                 }
             }
         }
+
+        public static Dictionary<ushort, int> bounces = new Dictionary<ushort, int>();
+
+
+
     }
 }

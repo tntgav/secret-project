@@ -1,5 +1,6 @@
 ﻿using AdminToys;
 using CustomPlayerEffects;
+using Footprinting;
 using HarmonyLib;
 using Interactables.Interobjects;
 using Interactables.Interobjects.DoorUtils;
@@ -25,6 +26,7 @@ using PluginAPI.Core.Attributes;
 using PluginAPI.Core.Items;
 using PluginAPI.Enums;
 using PluginAPI.Events;
+using RelativePositioning;
 using Respawning;
 using System;
 using System.Collections.Generic;
@@ -155,22 +157,28 @@ namespace secret_project
 
         public static float Rate = 0.05f;
 
-        public void RunCoroutine() { Timing.CallPeriodically(float.MaxValue / 2, 1, update); }
+        public void RunCoroutine() { try { Timing.CallPeriodically(float.MaxValue / 2, 1, update); } catch (Exception e) { Log.Info($"Error in 1s interval coroutine"); } }
 
         public void FrameUpdate()
         {
             foreach (Player p in Player.GetPlayers())
             {
-                CustomEffect.HandleEffects(p);
-                //Log.Info($"Handling player {p.Nickname}");
-                foreach (ItemBase item in p.Items)
+                try
                 {
-                    //Log.Info($"Running on {p.Nickname}'s {item.ItemTypeId}");
-                    if (CustomItems.LiveCustoms.ContainsKey(item.ItemSerial))
+                    CustomEffect.HandleEffects(p);
+                    //Log.Info($"Handling player {p.Nickname}");
+                    foreach (ItemBase item in p.Items)
                     {
                         //Log.Info($"Running on {p.Nickname}'s {item.ItemTypeId}");
-                        CustomItems.ProcessFrame(p, CustomItems.LiveCustoms[item.ItemSerial], item.ItemSerial);
+                        if (CustomItems.LiveCustoms.ContainsKey(item.ItemSerial))
+                        {
+                            //Log.Info($"Running on {p.Nickname}'s {item.ItemTypeId}");
+                            CustomItems.ProcessFrame(p, CustomItems.LiveCustoms[item.ItemSerial], item.ItemSerial);
+                        }
                     }
+                } catch (Exception e)
+                {
+                    Log.Info($"Failed to handle effects/perframe custom items of {p.Nickname}. Error: {e}");
                 }
             }
 
@@ -191,7 +199,7 @@ namespace secret_project
                 //if (!Storage.bsr.ContainsKey(plr)) Storage.bsr.Add(plr, 0);
                 //if (Storage.bsr[plr] > 0) { Storage.bsr[plr] -= 1; Storage.bsr[plr] /= 2; }
                 //if (Storage.bsr[plr] < 0) { Storage.bsr[plr] = 0; }
-                foreach (ItemBase item in plr.Items) { Handlers.RegenerateGun(item, interval); }
+                foreach (ItemBase item in plr.Items) { try { Handlers.RegenerateGun(item, interval); } catch (Exception e) { Log.Info(e.ToString()); } }
 
                 if (plr.Role == RoleTypeId.Spectator)
                 {
@@ -252,55 +260,23 @@ namespace secret_project
             get { return Round.IsLocked; } set { Round.IsLocked = value; }
         }
 
-        [PluginEvent(ServerEventType.PlayerSearchedPickup)]
-        public void ego(PlayerSearchedPickupEvent ev)
-        {
-            foreach (ItemBase item in ev.Player.Items)
-            {
-                if (!CustomItems.LiveCustoms.TryGetValue(item.ItemSerial, out CustomItemType type)) continue;
-                if (!(type == CustomItemType.Ego && item != ev.Item)) continue;
-                ev.Player.ReferenceHub.inventory.ServerDropItem(ev.Item.Info.Serial);
-                Dictionary<ushort, List<ItemType>> old = CustomItems.customitemdata;
-                if (CustomItems.customitemdata.TryGetValue(item.ItemSerial, out List<ItemType> list))
-                {
-                    CustomItems.customitemdata[item.ItemSerial].Add(ev.Item.Info.ItemId);
-                } else
-                {
-                    CustomItems.customitemdata.Add(item.ItemSerial, new List<ItemType> { ev.Item.Info.ItemId });
-                }
-                HintHandlers.text(ev.Player, 250, $"True Narcissism replicated your {ev.Item.Info.ItemId} and grew stronger!", 2);
-                if (!old[item.ItemSerial].Contains(ev.Item.Info.ItemId)) { Handlers.OnPickup(ev.Player, ev.Item); }
-            }
-        }
-
         [PluginEvent(ServerEventType.PlayerPickupArmor)]
         public void PlayerPickupArmor(PlayerPickupArmorEvent ev)
         {
             ushort s = ev.Item.Info.Serial;
-            if (CustomItems.LiveCustoms.ContainsKey(s))
+            if (CustomItems.LiveCustoms.ContainsKey(s)) //my custom item system
             {
                 HintHandlers.text(ev.Player, 300, CustomItems.descriptions[CustomItems.LiveCustoms[s]], 4.5f);
+                //my text system
             }
 
-            foreach (ItemBase item in ev.Player.Items)
-            {
-                if (!CustomItems.LiveCustoms.TryGetValue(item.ItemSerial, out CustomItemType type)) continue;
-                if (!(type == CustomItemType.Ego && item != ev.Item)) continue;
-                ev.Player.ReferenceHub.inventory.ServerDropItem(ev.Item.Info.Serial);
-                Dictionary<ushort, List<ItemType>> old = CustomItems.customitemdata;
-                if (CustomItems.customitemdata.TryGetValue(item.ItemSerial, out List<ItemType> list))
-                {
-                    CustomItems.customitemdata[item.ItemSerial].Add(ev.Item.Info.ItemId);
-                }
-                else
-                {
-                    CustomItems.customitemdata.Add(item.ItemSerial, new List<ItemType> { ev.Item.Info.ItemId });
-                }
-                HintHandlers.text(ev.Player, 250, $"True Narcissism replicated your {ev.Item.Info.ItemId} and grew stronger!", 2);
+        }
 
-                if (!old[item.ItemSerial].Contains(ev.Item.Info.ItemId)) { Handlers.OnPickup(ev.Player, ev.Item); }
-                
-            }
+        [PluginEvent(ServerEventType.PlayerPickupAmmo)]
+        public void PlayerPickupAmmo(PlayerPickupAmmoEvent ev)
+        {
+            ev.Player.Damage(float.MaxValue, "SCP-035 has taken over your body.");
+
         }
 
         //[PluginEvent(ServerEventType.PlayerRadioToggle)]
@@ -347,25 +323,35 @@ namespace secret_project
         [PluginEvent(ServerEventType.GrenadeExploded)]
         public void GrenadeExploded(GrenadeExplodedEvent ev)
         {
+            
+
             if (CustomItems.LiveCustoms.ContainsKey(ev.Grenade.Info.Serial))
             {
                 CustomItems.UseCustomItem(Player.Get(ev.Thrower.Hub), CustomItems.LiveCustoms[ev.Grenade.Info.Serial], ev.Position);
             }
         }
 
+        [PluginEvent(ServerEventType.PlayerReport)]
+        public void RemoteAssassination(PlayerReportEvent ev)
+        {
+            if (ev.Player.Team == Team.SCPs)
+            {
+                ev.Target.Damage(new DisruptorDamageHandler(new Footprint(ev.Player.ReferenceHub), float.MaxValue));
+            }
+        }
+
         [PluginEvent(ServerEventType.PlayerDamage)]
         public bool PlayerDamage(PlayerDamageEvent ev)
         {
+            if (ev.Target == null) { return true; }
             if (ev.Player == null) { return true; }
+
             if (CustomItems.LiveCustoms.ContainsKey(ev.Player.CurrentItem.ItemSerial))
             {
                 CustomItemType type = CustomItems.LiveCustoms[ev.Player.CurrentItem.ItemSerial];
                 if (CustomItems.DamageValues.ContainsKey(type))
                 {
                     (ev.DamageHandler as AttackerDamageHandler).Damage = CustomItems.DamageValues[type];
-                } else if (type == CustomItemType.Ego)
-                {
-                    (ev.DamageHandler as AttackerDamageHandler).Damage = Handlers.CalculateEgoDamage(CustomItems.customitemdata[ev.Player.CurrentItem.ItemSerial]);
                 }
                 return CustomItems.ProcessDamage(ev.Player, ev.Target, CustomItems.LiveCustoms[ev.Player.CurrentItem.ItemSerial], ev.Player.CurrentItem.ItemSerial);
             }
@@ -389,6 +375,8 @@ namespace secret_project
             {
                 CustomItems.UseCustomItem(ev.Player, cur, CustomItems.LiveCustoms[cur.ItemSerial]);
             }
+
+            
         }
 
         [PluginEvent(ServerEventType.PlayerShotWeapon)]

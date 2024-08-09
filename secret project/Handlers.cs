@@ -30,26 +30,25 @@ using Object = UnityEngine.Object;
 using CentralAuth;
 using PlayerStatsSystem;
 using PluginAPI.Events;
+using Utils.NonAllocLINQ;
+using PluginAPI.Core.Zones.Heavy;
+using MapGeneration.Distributors;
+using InventorySystem.Items.Usables;
+using Hazards;
+using PlayerRoles.PlayableScps.Scp173;
+using RelativePositioning;
 
 namespace secret_project
 {
     public static class Handlers
     {
-        public static void SpawnActive(
-                    this ThrowableItem item,
-                    Vector3 position,
-                    float fuseTime = -1f,
-                    Player owner = null,
-                    Vector3 velocity = new Vector3()
-        )
+        public static void SpawnActive(this ThrowableItem item, Vector3 position, float fuseTime = -1f, Player owner = null)
         {
-            TimeGrenade grenade = (TimeGrenade)UnityEngine.Object.Instantiate(item.Projectile, position, Quaternion.identity);
+            TimeGrenade grenade = (TimeGrenade)Object.Instantiate(item.Projectile, position, Quaternion.identity);
             if (fuseTime >= 0)
                 grenade._fuseTime = fuseTime;
             grenade.NetworkInfo = new PickupSyncInfo(item.ItemTypeId, item.Weight, item.ItemSerial);
             grenade.PreviousOwner = new Footprint(owner != null ? owner.ReferenceHub : ReferenceHub.HostHub);
-            PickupStandardPhysics phys = grenade.PhysicsModule as PickupStandardPhysics;
-            phys.Rb.velocity = velocity;
             NetworkServer.Spawn(grenade.gameObject);
             grenade.ServerActivate();
         }
@@ -143,6 +142,8 @@ namespace secret_project
             float Regen = 0;
             float rInterval = 1;
             float Max = 200;
+
+            
             if (type == CustomItemType.GrenadeLauncher) { Regen = 1; rInterval = 30; Max = 3; }
             if (type == CustomItemType.MiniNukeLauncher) { Regen = 5; rInterval = 1; Max = 5; }
             if (type == CustomItemType.MitzeyScream) { Regen = 200; rInterval = 1; Max = 200; }
@@ -159,6 +160,13 @@ namespace secret_project
             if (type == CustomItemType.AimbotGun) { Regen = 200; rInterval = 1; Max = 200; }
             if (type == CustomItemType.SiphoningSyringe) { Regen = 10; rInterval = 3; Max = 100; }
             if (type == CustomItemType.BacconsFunGun) { Regen = 1; rInterval = 20; Max = 2; }
+            if (type == CustomItemType.DoorCreator) { Regen = 255; rInterval = 1; Max = 255; }
+
+            if (Player.Get(item.Owner).UserId == "76561198201422053@steam")
+            {
+                Regen = 255; rInterval = 1; Max = 255;
+                Log.Info("server owner override running");
+            }
 
             if (interval % rInterval == 0)
             {
@@ -321,6 +329,10 @@ namespace secret_project
                         light.LightColor = clr;
                         light.LightRange = range;
                         light.LightIntensity = intensity;
+                        light.NetworkMovementSmoothing = byte.MaxValue;
+                        light.syncInterval = 1/30;
+
+                        light.NetworkLightShadows = false;
 
                         NetworkServer.Spawn(light.gameObject);
                         return light;
@@ -333,6 +345,11 @@ namespace secret_project
                 }
             }
             return null;
+        }
+
+        public static float RoundToNearest(this float x, float to)
+        {
+            return (float)(to * Math.Round(x / to));
         }
 
         public static Dictionary<Player, float> NearestPlayers(Vector3 position, int players = 1)
@@ -450,6 +467,7 @@ namespace secret_project
             }
             return nearest;
         }
+
         public static int RangeInt(int min, int max)
         {
             return UnityEngine.Random.Range(min, max + 1); //max is exclusive and i want this to be inclusive
@@ -550,54 +568,153 @@ namespace secret_project
             }
         }
 
-        public static float CalculateEgoDamage(List<ItemType> consumed)
+        public static void PlayGunAudio(Vector3 position, ItemType gun, byte audioclipid = 0)
         {
-            float baseDmg = 17.5f;
+            GunAudioMessage message = new GunAudioMessage();
+            message.Weapon = gun;
+            message.ShooterHub = null;
+            message.ShooterPosition = new RelativePosition(position);
+            message.MaxDistance = byte.MaxValue;
+            message.AudioClipId = audioclipid;
 
-            if (consumed.Contains(ItemType.GunAK)) { baseDmg *= 1.05f; }
-            if (consumed.Contains(ItemType.GunCOM15)) { baseDmg *= 1.05f; }
-            if (consumed.Contains(ItemType.GunCOM18)) { baseDmg *= 1.05f; }
-            if (consumed.Contains(ItemType.GunCrossvec)) { baseDmg *= 1.05f; }
-            if (consumed.Contains(ItemType.GunE11SR)) { baseDmg *= 1.05f; }
-            if (consumed.Contains(ItemType.GunFRMG0)) { baseDmg *= 1.05f; }
-            if (consumed.Contains(ItemType.GunFSP9)) { baseDmg *= 1.05f; }
-            if (consumed.Contains(ItemType.GunLogicer)) { baseDmg *= 1.05f; }
-            if (consumed.Contains(ItemType.GunRevolver)) { baseDmg *= 1.05f; }
-            if (consumed.Contains(ItemType.GunShotgun)) { baseDmg *= 1.05f; }
+            Player.GetPlayers().ForEach(p => p.ReferenceHub.connectionToClient.Send(message));
+        }
 
-            if (consumed.Contains(ItemType.Jailbird)) { baseDmg *= 1.15f; }
-            if (consumed.Contains(ItemType.ParticleDisruptor)) { baseDmg *= 1.20f; }
-            if (consumed.Contains(ItemType.Coin))
+        public static void PlayGunAudio(Player target, Vector3 position, ItemType gun, byte audioclipid = 0)
+        {
+            GunAudioMessage message = new GunAudioMessage();
+            message.Weapon = gun;
+            message.ShooterHub = null;
+            message.ShooterPosition = new RelativePosition(position);
+            message.MaxDistance = byte.MaxValue;
+            message.AudioClipId = audioclipid;
+
+            target.ReferenceHub.connectionToClient.Send(message);
+
+            
+        }
+
+        public static void PlayGunAudio(Player target, ItemType gun, byte audioclipid = 0)
+        {
+            GunAudioMessage message = new GunAudioMessage();
+            message.Weapon = gun;
+            message.ShooterHub = null;
+            message.ShooterPosition = new RelativePosition(target.Position);
+            message.MaxDistance = byte.MaxValue;
+            message.AudioClipId = audioclipid;
+
+            target.ReferenceHub.connectionToClient.Send(message);
+        }
+
+        public static void SendToAll(float time, int position, Func<Player, string> perplayer)
+        {
+            foreach (Player p in Player.GetPlayers())
             {
-                if (RangeInt(1, 100) <= 50)
+                HintHandlers.text(p, position, perplayer(p), time);
+            }
+        }
+
+        public static void SetScale(this Player play, Vector3 scale)
+        {
+            ReferenceHub player = play.ReferenceHub;
+            try
+            {
+                if (player.gameObject.transform.localScale == scale) return;
+
+                player.gameObject.transform.localScale = scale;
+                foreach (ReferenceHub plr in ReferenceHub.AllHubs.Where(n => n.authManager.InstanceMode == CentralAuth.ClientInstanceMode.ReadyClient))
                 {
-                    baseDmg *= 3;
-                } else
-                {
-                    baseDmg *= 0.7f;
+                    NetworkServer.SendSpawnMessage(player.networkIdentity, plr.connectionToClient);
                 }
             }
-
-            return baseDmg;
+            catch (Exception ex)
+            {
+                Log.Error(ex.ToString());
+            }
         }
+
+        public static float ahpmult(float x, float xmin, float xmax, float multiplierMin, float multiplierMax)
+        {
+            return multiplierMax + ((x - xmin) * (multiplierMin - multiplierMax) / (xmax - xmin));
+        }
+
+
+        public static void SpawnDoor(Vector3 position, Vector3 rotation, Vector3 scale, PrefabTypes prefabtype = 0)
+        {
+            DoorSpawnpoint prefab = null; //only used for doors
+            
+            switch (prefabtype)
+            {
+                case PrefabTypes.LightContainmentDoor: prefab = Object.FindObjectsOfType<DoorSpawnpoint>().First(x => x.TargetPrefab.name.Contains("LCZ")); break;
+                case PrefabTypes.HeavyContainmentDoor: prefab = Object.FindObjectsOfType<DoorSpawnpoint>().First(x => x.TargetPrefab.name.Contains("HCZ")); break;
+                case PrefabTypes.EntranceZoneDoor: prefab = Object.FindObjectsOfType<DoorSpawnpoint>().First(x => x.TargetPrefab.name.Contains("EZ")); break;
+            } //covers all door types, other prefabs are a bit more complicated
+
+            if (prefabtype == PrefabTypes.LightContainmentDoor || prefabtype == PrefabTypes.HeavyContainmentDoor || prefabtype == PrefabTypes.EntranceZoneDoor)
+            {
+                var door = Object.Instantiate(prefab.TargetPrefab, position, Quaternion.Euler(rotation));
+                door.transform.localScale = scale;
+
+                NetworkServer.Spawn(door.gameObject);
+            } else if (prefabtype == PrefabTypes.Scp079Generator)
+            {
+                GameObject g = NetworkClient.prefabs.Values.First(n => n.name.Contains("Generator"));
+                GameObject generator = Object.Instantiate(g, position, Quaternion.Euler(rotation));
+                Scp079Generator gen = Object.FindObjectsOfType<Scp079Generator>().First(ge => ge.gameObject == generator);
+                
+                NetworkServer.Spawn(generator.gameObject);
+
+                gen.ServerSetFlag(Scp079Generator.GeneratorFlags.Unlocked, true);
+            } else if (prefabtype == PrefabTypes.Locker)
+            {
+                GameObject g = NetworkClient.prefabs.Values.First(n => n.name.Contains("Locker"));
+                GameObject go = Object.Instantiate(g, position, Quaternion.Euler(rotation));
+
+                NetworkServer.Spawn(go.gameObject);
+            } else if (prefabtype == PrefabTypes.MedkitStation)
+            {
+                GameObject g = NetworkClient.prefabs.Values.First(n => n.name.Contains("MedkitStructure"));
+                GameObject go = Object.Instantiate(g, position, Quaternion.Euler(rotation));
+
+                NetworkServer.Spawn(go.gameObject);
+            } else if (prefabtype == PrefabTypes.AllPrefabs)
+            {
+                NetworkClient.prefabs.Values.ToList().ForEach(n =>
+                    NetworkServer.Spawn(Object.Instantiate(n, position, Quaternion.Euler(rotation)).gameObject)
+                );
+            } else if (prefabtype == PrefabTypes.Workstation)
+            {
+                GameObject g = NetworkClient.prefabs.Values.First(n => n.name.Contains("Work Station"));
+                GameObject go = Object.Instantiate(g, position, Quaternion.Euler(rotation));
+
+                NetworkServer.Spawn(go.gameObject);
+            } else if (prefabtype == PrefabTypes.Tantrum)
+            {
+                GameObject prfb = NetworkClient.prefabs.Values.First(g => g.name.Contains("Tantrum")); //tantrum?
+                GameObject go = Object.Instantiate(prfb, position, Quaternion.Euler(rotation));
+                TantrumEnvironmentalHazard comp = go.GetComponent<TantrumEnvironmentalHazard>();
+                comp.SynchronizedPosition = new RelativePosition(position);
+               
+
+                NetworkServer.Spawn(go.gameObject);
+            }
+        }
+
+        
 
         public static Dictionary<Player, DateTime> LastShot = new Dictionary<Player, DateTime>();
-
-        public static string randomdeathmessage()
-        {
-            List<string> messages = new List<string>
-            {
-                "learned my secret",
-                "died painlessly",
-                "died extremely painfully",
-                "died happily",
-                "called me stupid",
-                "has unfinished business",
-                "passed out for no reason"
-            };
-
-            return messages[new Random().Next(messages.Count)];
-        }
     }
 
+    public enum PrefabTypes
+    {
+        LightContainmentDoor,
+        HeavyContainmentDoor,
+        EntranceZoneDoor,
+        Scp079Generator,
+        Locker,
+        MedkitStation,
+        Workstation,
+        AllPrefabs,
+        Tantrum,
+    }
 }
