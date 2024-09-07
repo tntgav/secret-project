@@ -28,6 +28,8 @@ using PluginAPI.Enums;
 using PluginAPI.Events;
 using RelativePositioning;
 using Respawning;
+using RueI.Extensions;
+using Subtitles;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -37,6 +39,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Windows.Speech;
+using VoiceChat.Networking;
 using YamlDotNet.Core.Events;
 using Random = UnityEngine.Random;
 
@@ -60,6 +63,7 @@ namespace secret_project
             //    }
             //}
 
+
             RunCoroutine();
             //state = RoundState.Buy;
             //counter = 30;
@@ -79,25 +83,27 @@ namespace secret_project
             List<CustomItemType> weights = new List<CustomItemType>();
             foreach (CustomItemType type in CustomItems.SpawnWeights.Keys)
             {
-                for (int i = 0; i < CustomItems.SpawnWeights[type] * 10; i++)
+                for (int i = 0; i < CustomItems.SpawnWeights[type] * 10000; i++)
                 {
                     weights.Add(type);
                 }
             }
 
             //probability calculation. not important to plugin function
-
+            Log.Info("probability calculation");
             float total = CustomItems.SpawnWeights.Values.Sum();
             foreach (KeyValuePair<CustomItemType, float> pair in CustomItems.SpawnWeights)
             {
                 Log.Info($"{pair.Key} has a {(pair.Value / total) * 100}% chance of spawning");
             }
+            
 
             //end of prob. calc
 
             int bonushp = 0;
             float bonusSpeed = 0;
             List<ItemType> items = Enum.GetValues(typeof(ItemType)).ToArray<ItemType>().ToList();
+            Log.Info("room loot spawn in progress");
             foreach (RoomIdentifier r in RoomIdentifier.AllRoomIdentifiers)
             {
                 int itemsInRoom = Handlers.RangeInt(0, 12);
@@ -133,8 +139,11 @@ namespace secret_project
                         bonushp += 15;
                         bonusSpeed += 0.05f;
                     }
+
                 }
             }
+
+            Log.Info("room loot spawn complete");
 
             foreach (Player p in Player.GetPlayers())
             {
@@ -143,6 +152,9 @@ namespace secret_project
                 p.ReferenceHub.playerEffectsController._effectsByType[typeof(MovementBoost)].ServerSetState(Convert.ToByte(bonusSpeed));
             }
 
+            
+
+            Log.Info("bonus scp hp complete");
         }
 
         public static List<ItemType> itemblacklist = new List<ItemType>
@@ -249,7 +261,8 @@ namespace secret_project
 
             List<Player> players = Player.GetPlayers();
             players.RemoveAll(p => FpcNoclip.IsPermitted(p.ReferenceHub));
-            if (players.All((p) => p.Team == players.First().Team) && players.Count > 1) { Round.IsLocked = false; Log.Info("valid conditions met to end round"); } else { Round.IsLocked = true; }
+            Round.IsLocked = true;
+            //if (players.All((p) => p.Team == players.First().Team) && players.Count > 1) { Round.IsLocked = false; Log.Info("valid conditions met to end round"); } else { Round.IsLocked = true; }
             
         }
 
@@ -343,19 +356,35 @@ namespace secret_project
         [PluginEvent(ServerEventType.PlayerDamage)]
         public bool PlayerDamage(PlayerDamageEvent ev)
         {
+            Log.Info("damage taken");
             if (ev.Target == null) { return true; }
             if (ev.Player == null) { return true; }
 
-            if (CustomItems.LiveCustoms.ContainsKey(ev.Player.CurrentItem.ItemSerial))
+            bool outcome = true;
+            Log.Info("nobody null");
+            if (ev.Player.CurrentItem != null)
             {
-                CustomItemType type = CustomItems.LiveCustoms[ev.Player.CurrentItem.ItemSerial];
-                if (CustomItems.DamageValues.ContainsKey(type))
+                if (CustomItems.LiveCustoms.ContainsKey(ev.Player.CurrentItem.ItemSerial))
                 {
-                    (ev.DamageHandler as AttackerDamageHandler).Damage = CustomItems.DamageValues[type];
+                    CustomItemType type = CustomItems.LiveCustoms[ev.Player.CurrentItem.ItemSerial];
+                    Log.Info("checking if need damage mod");
+                    if (CustomItems.DamageValues.ContainsKey(type))
+                    {
+                        (ev.DamageHandler as AttackerDamageHandler).Damage = CustomItems.DamageValues[type];
+                    }
+                    Log.Info("damage mod done");
+                    outcome = CustomItems.ProcessDamage(ev.Player, ev.Target, CustomItems.LiveCustoms[ev.Player.CurrentItem.ItemSerial], ev.Player.CurrentItem.ItemSerial);
                 }
-                return CustomItems.ProcessDamage(ev.Player, ev.Target, CustomItems.LiveCustoms[ev.Player.CurrentItem.ItemSerial], ev.Player.CurrentItem.ItemSerial);
             }
-            return true;
+
+            List<ItemBase> customs = ev.Target.Items.Where(i => CustomItems.LiveCustoms.ContainsKey(i.ItemSerial)).ToList();
+
+            foreach (ItemBase item in customs)
+            {
+                CustomItems.TakeDamage(ev.Target, CustomItems.LiveCustoms[item.ItemSerial]);
+            }
+
+            return outcome;
         }
 
         [PluginEvent(ServerEventType.PlayerChangeItem)]

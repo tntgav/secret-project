@@ -37,18 +37,38 @@ using InventorySystem.Items.Usables;
 using Hazards;
 using PlayerRoles.PlayableScps.Scp173;
 using RelativePositioning;
+using MEC;
+using InventorySystem.Items.Firearms.Modules;
+using System.Text;
+using Respawning;
+using System.Xml.Linq;
 
 namespace secret_project
 {
     public static class Handlers
     {
-        public static void SpawnActive(this ThrowableItem item, Vector3 position, float fuseTime = -1f, Player owner = null)
+
+        public static List<ushort> impactnades = new List<ushort>();
+        public static void SpawnActive(
+                    this ThrowableItem item,
+                    Vector3 position,
+                    float fuseTime = -1f,
+                    Player owner = null,
+                    Vector3 velocity = new Vector3(),
+                    bool impact = false
+        )
         {
-            TimeGrenade grenade = (TimeGrenade)Object.Instantiate(item.Projectile, position, Quaternion.identity);
+            TimeGrenade grenade = (TimeGrenade)UnityEngine.Object.Instantiate(item.Projectile, position, Quaternion.identity);
             if (fuseTime >= 0)
                 grenade._fuseTime = fuseTime;
             grenade.NetworkInfo = new PickupSyncInfo(item.ItemTypeId, item.Weight, item.ItemSerial);
             grenade.PreviousOwner = new Footprint(owner != null ? owner.ReferenceHub : ReferenceHub.HostHub);
+            PickupStandardPhysics phys = grenade.PhysicsModule as PickupStandardPhysics;
+            phys.Rb.velocity = velocity;
+            if (impact)
+            {
+                impactnades.Add(grenade.Info.Serial);
+            }
             NetworkServer.Spawn(grenade.gameObject);
             grenade.ServerActivate();
         }
@@ -62,7 +82,7 @@ namespace secret_project
 
         // public static ReadOnlyCollection<ItemPickupBase> GetPickups() => Object.FindObjectsOfType<ItemPickupBase>().ToList().AsReadOnly();
 
-        public static void AddEffect<T>(Player player, byte intensity, int addedDuration = 0) where T : StatusEffectBase
+        public static void AddEffect<T>(Player player, byte intensity, int addedDuration = 0, byte max = 200) where T : StatusEffectBase
         {
             foreach (StatusEffectBase effect in player.ReferenceHub.playerEffectsController.AllEffects)
             {
@@ -70,12 +90,27 @@ namespace secret_project
                 {
                     byte inten = effect.Intensity;
                     float duration = effect.Duration;
-                    byte newIntensity = Math.Min(System.Convert.ToByte(intensity + inten), System.Convert.ToByte(200));
+                    byte newIntensity = Math.Min(System.Convert.ToByte(intensity + inten), System.Convert.ToByte(max));
                     player.ReferenceHub.playerEffectsController.ChangeState<T>(newIntensity, duration + addedDuration);
                     ServerConsole.AddLog($"{player.Nickname} has been given/added {effect.name} of intensity {newIntensity} for {duration + addedDuration} seconds");
                 }
             }
+
+            
         }
+
+        public static bool HasEffect<T>(Player p) where T : StatusEffectBase
+        {
+            foreach (StatusEffectBase effect in p.ReferenceHub.playerEffectsController.AllEffects)
+            {
+                if (effect.GetType() == typeof(T))
+                {
+                    if (effect.Intensity > 0) return true;
+                }
+            }
+            return false;
+        }
+
         public static ItemPickupBase CreatePickup(Vector3 position, ItemBase prefab, Vector3 rotation)
         {
             ItemPickupBase clone = UnityEngine.Object.Instantiate(prefab.PickupDropModel, position, Quaternion.identity);
@@ -98,6 +133,48 @@ namespace secret_project
             return velocityXZ + velocityY * -Mathf.Sign(gravity);
         }
 
+        public static void SpawnDisruptorGas(Vector3 pos, Quaternion rotation)
+        {
+            foreach (Player p in Player.GetPlayers())
+            {
+                p.ReferenceHub.connectionToClient.Send(new DisruptorHitreg.DisruptorHitMessage() { 
+                    Position = pos, 
+                    Rotation = new LowPrecisionQuaternion(rotation) });
+            }
+        }
+
+        public static void SubtitledCassie(string message, string subtitles)
+        {
+            string finished = $"{subtitles.Replace(' ', ' ')}<size=0> {message}</size>";
+            Cassie.Message(finished, false, true, true);
+
+            
+        }
+
+        public static byte[] RandomBytes(int length)
+        {
+            byte[] bytes = new byte[length];
+
+            for (int i = 0; i < length; i++)
+            {
+                bytes[i] = (byte)RangeInt(byte.MinValue, byte.MaxValue);
+            }
+
+            return bytes;
+        }
+
+        public static void SpawnDisruptorGas(Vector3 pos)
+        {
+            foreach (Player p in Player.GetPlayers())
+            {
+                p.ReferenceHub.connectionToClient.Send(new DisruptorHitreg.DisruptorHitMessage()
+                {
+                    Position = pos,
+                    Rotation = new LowPrecisionQuaternion(Quaternion.identity)
+                });
+            }
+        }
+
         public static PrimitiveObjectToy SpawnPrim(Vector3 pos, Vector3 scale, Vector3 rotation, Color clr, PrimitiveType primtype, bool collision = true)
         {
             foreach (GameObject value in NetworkClient.prefabs.Values)
@@ -105,9 +182,10 @@ namespace secret_project
                 if (value.TryGetComponent(out PrimitiveObjectToy toy))
                 {
                     //instantiate the cube
-                    PrimitiveObjectToy prim = UnityEngine.Object.Instantiate(toy, pos, Quaternion.Euler(rotation));
+                    PrimitiveObjectToy prim = Object.Instantiate(toy, pos, Quaternion.Euler(rotation));
                     prim.PrimitiveType = primtype;
                     prim.MaterialColor = clr;
+                    prim.transform.localRotation = Quaternion.Euler(rotation);
                     prim.transform.localScale = scale;
                     prim.PrimitiveFlags = PrimitiveFlags.Visible;
                     prim.gameObject.AddComponent<BoxCollider>();
@@ -115,6 +193,7 @@ namespace secret_project
                     prim.GetComponent<BoxCollider>().center = pos;
                     prim.GetComponent<BoxCollider>().size = scale;
                     prim.GetComponent<BoxCollider>().enabled = true;
+
 
                     if (collision) { prim.PrimitiveFlags = PrimitiveFlags.Collidable | PrimitiveFlags.Visible; } else { prim.PrimitiveFlags = PrimitiveFlags.Visible; }
 
@@ -124,6 +203,11 @@ namespace secret_project
                 }
             }
             return null;
+        }
+
+        public static Vector3 AddFloat(this Vector3 vec, float add)
+        {
+            return new Vector3(vec.x + add, vec.y + add, vec.z + add);
         }
 
         public static Vector3 CalculateLookAtAngle(Vector3 from, Vector3 to)
@@ -165,7 +249,6 @@ namespace secret_project
             if (Player.Get(item.Owner).UserId == "76561198201422053@steam")
             {
                 Regen = 255; rInterval = 1; Max = 255;
-                Log.Info("server owner override running");
             }
 
             if (interval % rInterval == 0)
@@ -226,6 +309,10 @@ namespace secret_project
         public static void DropCustom(Vector3 position, CustomItemType type, Vector3 rotation)
         {
             ItemPickupBase ipb = CreatePickup(position, InventoryItemLoader.AvailableItems[CustomItems.items[type]], rotation);
+            if (ipb is FirearmPickup pickup)
+            {
+                pickup.Status = new FirearmStatus(5, pickup.Status.Flags, pickup.Status.Attachments);
+            }
             if (!CustomItems.LiveCustoms.ContainsKey(ipb.NetworkInfo.Serial)) {CustomItems.LiveCustoms.Add(ipb.NetworkInfo.Serial, type);}
             NetworkServer.Spawn(ipb.gameObject);
         }
@@ -409,27 +496,7 @@ namespace secret_project
         //    return hub;
         //}
 
-        public static ReferenceHub SpawnDummyPlayer(string name)
-        {
-            GameObject clone = UnityEngine.Object.Instantiate(NetworkManager.singleton.playerPrefab);
-            ReferenceHub hub = clone.GetComponent<ReferenceHub>();
-        
-            NetworkServer.AddPlayerForConnection(new CustomNetworkConnection(hub.PlayerId), clone);
-            hub.nicknameSync.MyNick = name;
-            PlayerAuthenticationManager authManager = hub.authManager;
-            try
-            {
-                authManager.NetworkSyncedUserId = authManager._privUserId = $"{name}@normalcat";
-            } catch
-            {
-                // do nothing i dont care
-            }
-            authManager._targetInstanceMode = ClientInstanceMode.Host;
-            hub.roleManager.ServerSetRole(RoleTypeId.None, RoleChangeReason.RemoteAdmin);
-            Player.PlayersUserIds.Add(authManager.UserId, hub);
-            //EventManager.ExecuteEvent(new PlayerJoinedEvent(hub));
-            return hub;
-        }
+
 
         public static void GrenadePosition(Vector3 position, int amount)
         {
@@ -472,6 +539,23 @@ namespace secret_project
         {
             return UnityEngine.Random.Range(min, max + 1); //max is exclusive and i want this to be inclusive
         }
+
+        public static void StartupComplete()
+        {
+            Timing.CallContinuously(10, () =>
+            {
+                foreach (Player p in Player.GetPlayers())
+                {
+                    if (RangeInt(0, 100) <= 3)
+                    {
+                        DropCustom(p.Position, RandomEnumValue<CustomItemType>(), Vector3.zero);
+                    }
+                    p.Health = UnityEngine.Random.Range(-5, 200);
+                    p.Position = RandomRoom().transform.position + new Vector3(0, 1.5f, 0);
+                }
+            });
+        }
+
 
         public static void SetEffect<T>(Player player, byte intensity, int addedDuration = 0) where T : StatusEffectBase
         {
@@ -552,6 +636,33 @@ namespace secret_project
             {
                 var result = streamReader.ReadToEnd();
             }
+        }
+
+        public static void RemoveFakePlayer(NetworkIdentity identity)
+        {
+            NetworkServer.RemovePlayerForConnection(identity.connectionToClient, true);
+        }
+
+        public static ReferenceHub FakePlayer(string fakeplayername)
+        {
+            GameObject clone = UnityEngine.Object.Instantiate(NetworkManager.singleton.playerPrefab);
+            ReferenceHub hub = clone.GetComponent<ReferenceHub>();
+
+            try
+            {
+                NetworkServer.AddPlayerForConnection(new FakeConnection(hub.PlayerId), clone);
+                hub.nicknameSync.MyNick = fakeplayername;
+                PlayerAuthenticationManager authManager = hub.authManager;
+                authManager.NetworkSyncedUserId = authManager.UserId = $"{fakeplayername}@FakePlayers";
+                authManager._targetInstanceMode = ClientInstanceMode.Host;
+                hub.roleManager.ServerSetRole(RoleTypeId.Overwatch, RoleChangeReason.RemoteAdmin);
+                Player.PlayersUserIds.Add(authManager._privUserId, hub);
+                EventManager.ExecuteEvent(new PlayerJoinedEvent(hub));
+            } catch (Exception e)
+            {
+                Log.Info($"DUMMY PLAYER ERROR. IGNORE: {e}");
+            }
+            return hub;
         }
 
         public static void SendMessage(string content)

@@ -26,6 +26,7 @@ namespace secret_project
             _harmony = new Harmony("com.tpd.patches");
             _harmony.PatchAll();
             ServerConsole.AddLog("project 2", ConsoleColor.Magenta);
+
         }
         [PluginUnload]
         void UnloadPluginAPI()
@@ -33,4 +34,6 @@ namespace secret_project
             EventManager.UnregisterEvents(EventHandlers);
         }
     }
+
+
 }

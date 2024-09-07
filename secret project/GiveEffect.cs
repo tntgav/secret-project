@@ -20,7 +20,7 @@ namespace secret_project
 
         public string[] Aliases => new string[] { "aa" };
 
-        public string Description => "gives you a custom item";
+        public string Description => "custom effroct comadn";
 
         public bool Execute(ArraySegment<string> arguments, ICommandSender sender, out string response)
         {

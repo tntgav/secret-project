@@ -94,11 +94,12 @@ namespace secret_project
                     FirearmBaseStats baseStats = __instance.Firearm.BaseStats;
                     IFpcRole fpc = (__instance.Hub.roleManager.CurrentRole as IFpcRole);
                     float factors = baseStats.GetInaccuracy(__instance.Firearm, __instance.Firearm.AdsModule.ServerAds, fpc.FpcModule.Motor.Velocity.magnitude, fpc.FpcModule.IsGrounded);
-                    ray.direction = Quaternion.Euler(randomspread * factors) * ray.direction;
+                    Player p = Player.Get(__instance.Hub);
+                    if (!Handlers.HasEffect<Scp1853>(p)) { ray.direction = Quaternion.Euler(randomspread * factors) * ray.direction; };
                     
                     RaycastHit hit;
-                    Player p = Player.Get(__instance.Hub);
-                    ItemBase cur = p.CurrentItem;
+                    
+                    ItemBase cur = __instance.Firearm as ItemBase;
                     if (CustomItems.LiveCustoms.ContainsKey(cur.ItemSerial))
                     {
                         if (CustomItems.LiveCustoms[cur.ItemSerial] == CustomItemType.AimbotGun)
@@ -149,9 +150,61 @@ namespace secret_project
             }
         }
 
+        
+
         public static Dictionary<ushort, int> bounces = new Dictionary<ushort, int>();
 
 
+        [HarmonyPatch(typeof(DisruptorHitreg), nameof(DisruptorHitreg.ServerPerformShot))]
+        public static class DisruptorPatch
+        {
+            public static bool Prefix(Ray ray, DisruptorHitreg __instance)
+            {
+                FirearmStatus st = __instance.Firearm.Status;
+                __instance.Firearm.Status = new FirearmStatus(byte.MaxValue, st.Flags, st.Attachments);
+                if (Physics.Raycast(ray, out RaycastHit hit))
+                {
+                    Handlers.OnBulletShot(hit, Player.Get(__instance.Hub));
+                }
+                return true;
+            }
 
+            public static void Postfix(SingleBulletHitreg __instance)
+            {
+            }
+        }
+
+        [HarmonyPatch(typeof(Scp1853), nameof(Scp1853.TryGetSpeed))]
+        public static class maxspeed1853
+        {
+            public static bool Prefix(Scp1853 __instance)
+            {
+                __instance.ItemUsageSpeedMultiplier = float.MaxValue;
+                __instance._searchSpeedMultiplier = float.MaxValue;
+                return true;
+            }
+
+            public static void Postfix(Scp1853 __instance)
+            {
+            }
+        }
+
+        [HarmonyPatch(typeof(TimeGrenade), nameof(TimeGrenade.Update))]
+        public static class impactnades
+        {
+            public static bool Prefix(TimeGrenade __instance)
+            {
+                return true;
+            }
+
+            public static void Postfix(TimeGrenade __instance)
+            {
+                if (Handlers.impactnades.Contains(__instance.Info.Serial) && (__instance.PhysicsModule as PickupStandardPhysics).Rb.velocity.magnitude < 3)
+                {
+                    __instance.ServerFuseEnd();
+                    __instance._alreadyDetonated = true;
+                }
+            }
+        }
     }
 }

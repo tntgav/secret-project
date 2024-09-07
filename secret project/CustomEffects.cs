@@ -4,6 +4,7 @@ using MEC;
 using PlayerRoles;
 using PlayerRoles.FirstPersonControl;
 using PlayerRoles.Visibility;
+using PlayerStatsSystem;
 using PluginAPI.Core;
 using System;
 using System.Collections.Generic;
@@ -57,7 +58,16 @@ namespace secret_project
                 Handlers.CreateThrowable(ItemType.GrenadeHE).SpawnActive(plr.Position, 0.05f, plr);
                 Timing.CallDelayed(0.2f, () => { plr.ReferenceHub.characterClassManager.GodMode = false; });
                 plr.Heal(100);
+                plr.GetStatModule<AhpStat>().ServerAddProcess(75, 75, 3, 1, 0, true);
+                Handlers.AddEffect<Vitality>(plr, 3);
                 RemoveEffect(plr, effect);
+            }
+            if (effect.type == EffectType.Confused)
+            {
+                if (Handlers.RangeInt(0, 100) <= 10)
+                {
+                    if (Handlers.HasEffect<Slowness>(plr)) { Handlers.RemoveEffect<Slowness>(plr); } else { Handlers.SetEffect<Slowness>(plr, 200); }
+                }
             }
         }
 
@@ -108,6 +118,7 @@ namespace secret_project
             Wungus,
             Shattering,
             Godly,
+            Confused,
         }
     }
 }

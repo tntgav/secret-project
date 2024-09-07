@@ -6,6 +6,7 @@ using Hints;
 using Interactables.Interobjects.DoorUtils;
 using InventorySystem;
 using InventorySystem.Items;
+using InventorySystem.Items.Firearms;
 using InventorySystem.Items.Pickups;
 using InventorySystem.Items.ThrowableProjectiles;
 using JetBrains.Annotations;
@@ -150,11 +151,12 @@ namespace secret_project
                     Timing.CallPeriodically(fintime, 0.02f, () =>
                     {
                         //Log.Info("attempting size increase");
-                        Handlers.PlayGunAudio(hit, ItemType.ParticleDisruptor, 8);
+                        //Handlers.PlayGunAudio(hit, ItemType.ParticleDisruptor, 10);
                         float curscale = prim.transform.localScale.x;
                         float lerped = Mathf.Lerp(curscale, 5.2f, 0.035f);
                         Vector3 newscale = new Vector3(lerped, lerped, lerped);
                         prim.transform.localScale = newscale;
+                        Handlers.SpawnDisruptorGas(hit);
                         //prim.NetworkMovementSmoothing = 20;
                     });
                     Timing.CallDelayed(fintime, () =>
@@ -192,8 +194,72 @@ namespace secret_project
                     }
                 }
 
+                if (type == CustomItemType.Trapper)
+                {
+                    foreach (Player p in Player.GetPlayers().Where(pl => Vector3.Distance(pl.Position, hit) < 2))
+                        {
+                        if (plr.Team == p.Team) continue;
+                        Vector3 oldpos = p.Position;
+                        p.Position = new Vector3(39, 1014.1f, -32.36f);
+                        Timing.CallDelayed(5, () =>
+                        {
+                            p.Position = oldpos;
+                        });
+                    }
+                }
+
+
+                if (type == CustomItemType.Strangegun)
+                {
+                    Vector3 plrcam = plr.Position;
+                    float distance = Vector3.Distance(plrcam, hit);
+                    Vector3 angle = plr.ReferenceHub.PlayerCameraReference.eulerAngles; 
+                    Log.Info($"player cam is at {plrcam}. plr is looking {angle}");
+                    Color lb = new Color(100f/255f, 130f/255f, 230f/255f);
+                    PrimitiveObjectToy beam = Handlers.SpawnPrim(Vector3.Lerp(plrcam, hit, 0.5f), new Vector3(0.2f, distance, 0.2f), angle + new Vector3(90, 0, 0), new Color(lb.r, lb.g, lb.b, 0.95f), PrimitiveType.Cylinder, false);
+                    LightSourceToy beamlight1 = Handlers.AddLight(hit, lb, 150, 150);
+                    LightSourceToy beamlight2 = Handlers.AddLight(Vector3.Lerp(plrcam, hit, 0.5f), lb, 150, 150);
+                    //Handlers.GrenadePosition(hit, plr);
+                    Handlers.SpawnDisruptorGas(hit + ((plr.ReferenceHub.PlayerCameraReference.position - hit).normalized * 0.1f));
+                    Timing.CallDelayed(0.4f, () =>
+                    {
+                        NetworkServer.Destroy(beam.gameObject);
+                        NetworkServer.Destroy(beamlight1.gameObject);
+                        NetworkServer.Destroy(beamlight2.gameObject);
+                    });
+                }
+
+                
+
             } else //non gun custom item
             {
+
+                if (type == CustomItemType.GrenadeFlinger)
+                {
+                    Vector3 plrcam = plr.Camera.eulerAngles;
+                    //float distance = Vector3.Distance(plrcam, hit);
+                    //
+                    //Handlers.CreateThrowable(ItemType.GrenadeHE).SpawnActive(plrcam, 5, plr, plr.Velocity * 5, true);
+                    Vector3 backpos = plr.Position;
+                    ReferenceHub fakeplr = Handlers.FakePlayer($"{plr.Nickname}");
+                    Handlers.AddEffect<Invisible>(plr, 1, 15);
+                    Timing.CallDelayed(0.5f, () =>
+                    {
+                        Log.Info("running role set test");
+                        fakeplr.roleManager.ServerSetRole(plr.Role, RoleChangeReason.RemoteAdmin, RoleSpawnFlags.None);
+                        fakeplr.TryOverridePosition(backpos, plrcam);
+                    });
+
+                    Timing.CallDelayed(15, () =>
+                    {
+                        Log.Info("attempt remove bot plr");
+                        Handlers.RemoveFakePlayer(fakeplr.networkIdentity);
+                        plr.Position = backpos;
+
+                    });
+
+                }
+
                 if (type == CustomItemType.Freaky500) { HintHandlers.text(plr, 300, "You feel an overwhelming sense of freakiness...", 3); plr.Health = float.MinValue; }
                 if (type == CustomItemType.Heroin) { plr.Damage(6000, "Heroin hurts..."); }
                 if (type == CustomItemType.Hyperion) 
@@ -269,6 +335,54 @@ namespace secret_project
                     });
                 }
 
+                if (type == CustomItemType.DomainExpansion)
+                {
+                    Vector3 start = plr.Position;
+                    PrimitiveObjectToy domain = Handlers.SpawnPrim(start, Vector3.zero, Vector3.zero, new Color(0.5f, 0, 0.5f, 0.95f), PrimitiveType.Sphere, false);
+                    LightSourceToy light = Handlers.AddLight(start, new Color(0.5f, 0, 0.5f), 5, 5);
+                    int interval = 0;
+                    Timing.CallContinuously(5, () =>
+                    {
+                        interval++;
+                        if (interval % 50 == 0)
+                        {
+                            Handlers.PlayGunAudio(start, ItemType.ParticleDisruptor);
+                        }
+                        domain.transform.localScale = domain.transform.localScale.AddFloat(0.1f);
+                        light.NetworkLightRange += 2.5f;
+                        light.NetworkLightIntensity += 2.5f;
+                        foreach (Player found in Player.GetPlayers().Where(p => Vector3.Distance(start, p.Position) < domain.transform.localScale.magnitude))
+                        {
+                            if (found == plr)
+                            {
+                                Handlers.AddEffect<MovementBoost>(found, 1, 0, 100);
+                                found.Health *= 1.001f;
+                            }
+                            else
+                            {
+                                Handlers.AddEffect<Slowness>(found, 1, 0, 100);
+                                found.Health *= 0.999f;
+                            }
+                        }
+                    });
+
+                    Timing.CallDelayed(6, () =>
+                    {
+                        foreach (Player found in Player.GetPlayers().Where(p => Vector3.Distance(start, p.Position) < domain.transform.localScale.magnitude))
+                        {
+                            Handlers.RemoveEffect<Slowness>(found);
+                            found.Position = new Vector3(found.Position.x, 1025, found.Position.z);
+                            PrimitiveObjectToy plrprim = Handlers.SpawnPrim(found.Position + new Vector3(0, -2, 0), new Vector3(2, 0.5f, 2), Vector3.zero, Color.white, PrimitiveType.Cube);
+                            LightSourceToy plrlight = Handlers.AddLight(found.Position, Color.white, 10, 10);
+                            Timing.CallDelayed(90, () =>
+                            {
+                                NetworkServer.Destroy(plrprim.gameObject);
+                                NetworkServer.Destroy(plrlight.gameObject);
+                            });
+                        }
+                    });
+                }
+
                 if (type == CustomItemType.StatBuffer)
                 {
                     int choice = Handlers.RangeInt(1, 2); // 1 = speed, 2 = health, 3 = random positive effect
@@ -309,6 +423,27 @@ namespace secret_project
                         NetworkServer.Destroy(exitP.gameObject);
                     });
                 }
+
+                //if (type == CustomItemType.Ncat)
+                //{
+                //    Cassie.Message("pitch_0.15 .g4 pitch_1 . pitch_0.15 .g4 pitch_1 . pitch_0.15 .g4 pitch_1 . pitch_0.8 warning . emergency n o r m a l c a t protocol engaged . powering up systems pitch_0.05 .g7 system power up complete . tminus 30 seconds to start");
+                //    foreach (RoomIdentifier room in RoomIdentifier.AllRoomIdentifiers)
+                //    {
+                //        room.GetComponentInChildren<RoomLightController>().NetworkOverrideColor = Color.red;
+                //    }
+                //
+                //    Timing.CallContinuously(30, () =>
+                //    {
+                //        Handlers.GrenadePosition(Handlers.RandomRoom().transform.position);
+                //    });
+                //
+                //    Timing.CallDelayed(30, () =>
+                //    {
+                //        Cassie.Message("system start up complete . pitch_0.6 get ready");
+                //
+                //        Handlers.StartupComplete();
+                //    });
+                //}
 
                 if (type == CustomItemType.Crasher)
                 {
@@ -435,6 +570,11 @@ namespace secret_project
                 //hiding someone from their own client will make their game VERY angry
             }
 
+            if (type == CustomItemType.ShatteringJustice)
+            {
+                CustomEffect.GiveEffect(Target, new CustomEffect(CustomEffect.EffectType.Shattering, float.MaxValue, 1));
+            }
+
             if (type == CustomItemType.SiphoningSyringe && Attacker.Team != Target.Team) 
             {
                 float damageDealt = DamageValues[CustomItemType.SiphoningSyringe];
@@ -452,6 +592,8 @@ namespace secret_project
                 Target.ReferenceHub.playerEffectsController.EnableEffect<Invisible>(3, true);
             }
 
+            
+
             if (type == CustomItemType.LaserCannon)
             {
                 Target.ReferenceHub.characterClassManager.GodMode = false;
@@ -468,9 +610,20 @@ namespace secret_project
                 try { Target.Damage(new DisruptorDamageHandler(new Footprint(ReferenceHub.HostHub), float.MaxValue)); } catch (Exception e) { Log.Info($"IGNORE: {e}"); }
             }
 
-            if (type == CustomItemType.TougherTimes)
+            
+
+            return true;
+        }
+
+        public static bool TakeDamage(Player plr, CustomItemType type) 
+        {
+            
+
+            if (type == CustomItemType.EmergencyCoconutShield)
             {
-                if (Handlers.RangeInt(0, 100) <= 60) { HintHandlers.text(Target, 300, "Damage blocked!", 1f); return false; }
+                plr.ReferenceHub.characterClassManager.GodMode = true;
+                Handlers.GrenadePosition(plr.Position, plr);
+                Timing.CallDelayed(0.25f, () => { plr.ReferenceHub.characterClassManager.GodMode = false; });
             }
 
             return true;
@@ -501,12 +654,13 @@ namespace secret_project
             if (type == CustomItemType.Hallucination)
             {
                 plr.Health = Math.Min(plr.Health + (1*rate), 125);
-                RoomIdentifier room = RoomIdentifier.AllRoomIdentifiers.ToList().Where(r => Vector3.Distance(r.transform.position, plr.Position) < 100).ToList().RandomItem();
-                if (room == null) { return; }
+                RoomIdentifier room = RoomIdentifier.AllRoomIdentifiers.ToList().Where(r => Vector3.Distance(r.transform.position, plr.Position) < 45).ToList().RandomItem();
+
+                if (room == null || Handlers.RangeInt(0, 5) <= 2) { return; }
 
                 List<ItemType> valid = new List<ItemType>
                 {
-                    ItemType.GunA7, ItemType.GunAK, ItemType.GunFSP9, ItemType.GunRevolver, ItemType.GunCrossvec, ItemType.GunLogicer, ItemType.ParticleDisruptor, ItemType.GunFRMG0, ItemType.GunE11SR
+                    ItemType.GunA7, ItemType.GunAK, ItemType.GunFSP9, ItemType.GunRevolver, ItemType.GunCrossvec, ItemType.GunLogicer, ItemType.ParticleDisruptor, ItemType.GunFRMG0, ItemType.GunE11SR, ItemType.GunShotgun
                 };
 
                 Handlers.PlayGunAudio(plr, room.transform.position, valid.RandomItem());
@@ -514,24 +668,34 @@ namespace secret_project
 
             if (type == CustomItemType.GodArmor)
             {
-                plr.GetStatModule<AhpStat>().ServerAddProcess(plr.Health, float.MaxValue, 0, 1, 0, true);
-                plr.Health += 5;
+                plr.GetStatModule<AhpStat>().ServerAddProcess(20, float.MaxValue, 0, 1, 0, true);
+                plr.Damage(20, "you shouldnt die to this");
+                plr.Health = Mathf.Clamp(plr.Health, 15, 1000000);
 
-                plr.Health = Mathf.Clamp(plr.Health, 150, 1000000);
-
-                byte moveboostCalculated = Convert.ToByte(Mathf.Clamp(Math.Max((plr.Velocity.magnitude-3.9f)*15, 0), 0, 255));
-                byte damagereductionCalculated = Convert.ToByte(Mathf.Clamp(((400 - plr.Health) / 2), 0, 200));
-
+                byte moveboostCalculated = Convert.ToByte(Mathf.Clamp(Math.Max((plr.Velocity.magnitude-3.9f)*15, 0), 0, 170));
+                byte damagereductionCalculated = Convert.ToByte(Mathf.Clamp(moveboostCalculated * 1.5f, 0, 175));
+                 
+                if (moveboostCalculated > 160)
+                {
+                    float hpbuff = 200 / plr.Health;
+                    plr.Health += hpbuff;
+                    Handlers.SetEffect<Invigorated>(plr, 1);
+                } else
+                {
+                    Handlers.RemoveEffect<Invigorated>(plr);
+                }
                 Log.Info($"{plr.Nickname} has gained {moveboostCalculated}% moveboost and {damagereductionCalculated / 2}% DR");
+                Handlers.SetEffect<Scp1853>(plr, 1);
+                Handlers.SetEffect<Scp207>(plr, 3);
                 Handlers.SetEffect<MovementBoost>(plr, moveboostCalculated, 2);
                 Handlers.SetEffect<DamageReduction>(plr, damagereductionCalculated, 2);
                 foreach (Player p in Player.GetPlayers())
                 {
                     float dist = Vector3.Distance(p.Position, plr.Position);
-                    if (dist < 25)
+                    if (dist < 2)
                     {
-                        float dmg = (25 - dist) / 100;
-                        p.Damage((p.Health * dmg) + 15, "The aura of a god.");
+                        if (p != plr && damagereductionCalculated > 200) { Handlers.GrenadePosition(p.Position, plr); }
+                        if (p != plr) { p.Damage(moveboostCalculated, "A-Train'ed"); }
                     } 
                 }
             }
@@ -593,12 +757,18 @@ namespace secret_project
             { CustomItemType.DoorCreator, $"<color=#ffccde><b>Door-Creator 9000</b></color><br>What? Why?<br>Regenerates 200 ammo every second up to 200." },
             { CustomItemType.Swapper, "<color=#22ff22><b>Swapper</b></color><br><br>Converts 25 of your max hp into a regenerating barrier." },
             { CustomItemType.Hallucination, "<color=#22ff22><b>Hallucinating Heart</b></color><br><br>Gives you some buffs, but... are those gunshots real?" },
-            { CustomItemType.SuicideBomb, "<color=#22fff><b>Portable Suicide Bomb</b></color><br><br><b><color=#ff0000>ALERT!</color> Another sentry buster has entered the area</b>" },
+            { CustomItemType.SuicideBomb, "<color=#22ffff><b>Portable Suicide Bomb</b></color><br><br><b><color=#ff0000>ALERT!</color> Another sentry buster has entered the area</b>" },
+            { CustomItemType.EmergencyCoconutShield, "<color=#22ffff><b>Emergency Coconut Shield</b></color><br><br><b>Shields you from danger when hit.</b>" },
+            { CustomItemType.Trapper, "<color=#22ffff><b>Trapper</b></color><br><br><b>Sends the target to the tutorial tower for 5 seconds<br><size=10>tempest gun :trollface:</size></b>" },
+            { CustomItemType.DomainExpansion, "<color=#22ffff><b>Domain Expansion</b></color><br><br><b><size=10>i have not watched jjk</size></b>" },
+            { CustomItemType.Ncat, "<color=#ff0000><b>N.O.R.M.A.L.C.A.T. SUPERWEAPON</b></color><br><br><b>One time use. Signals the start of the NORMALCAT protocol.</b>" },
+            { CustomItemType.Strangegun, "<color=#ff00ff><b>The Strange Gun</b></color><br><br><b>Someone once dreamt about this gun, a long, long time ago.</b>" },
+            { CustomItemType.GrenadeFlinger, "<color=#ff00ff><b>Faker</b></color><br><br><b>Summons a clone of you that lasts for 15s and makes you invisible.</b>" },
         };
 
         public static Dictionary<CustomItemType, ItemType> items = new Dictionary<CustomItemType, ItemType>
         {
-            { CustomItemType.GrenadeLauncher, ItemType.GunRevolver },
+            { CustomItemType.GrenadeLauncher, ItemType.ParticleDisruptor },
             { CustomItemType.MiniNukeLauncher, ItemType.GunAK },
             { CustomItemType.Freaky500, ItemType.SCP500 },
             { CustomItemType.Heroin, ItemType.Adrenaline },
@@ -607,7 +777,7 @@ namespace secret_project
             { CustomItemType.MinionGun, ItemType.GunRevolver },
             { CustomItemType.GravityGun, ItemType.GunCOM15 },
             { CustomItemType.Grappler, ItemType.GunCOM18 },
-            { CustomItemType.Arcer, ItemType.GunCOM15 },
+            { CustomItemType.Arcer, ItemType.ParticleDisruptor },
             { CustomItemType.ShatteringJustice, ItemType.GunFRMG0 },
             { CustomItemType.SmokeBomb, ItemType.GrenadeFlash },
             { CustomItemType.BlindingBarrage, ItemType.GunE11SR },
@@ -636,6 +806,12 @@ namespace secret_project
             { CustomItemType.Swapper, ItemType.ArmorLight},
             { CustomItemType.Hallucination, ItemType.ArmorLight},
             { CustomItemType.SuicideBomb, ItemType.Adrenaline},
+            { CustomItemType.EmergencyCoconutShield, ItemType.ArmorHeavy},
+            { CustomItemType.Trapper, ItemType.ParticleDisruptor},
+            { CustomItemType.DomainExpansion, ItemType.AntiSCP207},
+            { CustomItemType.Ncat, ItemType.SCP1576},
+            { CustomItemType.Strangegun, ItemType.GunA7},
+            { CustomItemType.GrenadeFlinger, ItemType.Adrenaline},
         };
 
         public static Dictionary<CustomItemType, Color> colors = new Dictionary<CustomItemType, Color>
@@ -678,6 +854,12 @@ namespace secret_project
             { CustomItemType.Swapper, new Color(0.2f, 1, 0.2f) },
             { CustomItemType.Hallucination, new Color(0, 1, 1) },
             { CustomItemType.SuicideBomb, new Color(0, 1, 1) },
+            { CustomItemType.EmergencyCoconutShield, new Color(0.6f, 0.3f, 0) },
+            { CustomItemType.Trapper, new Color(0, 1, 1) },
+            { CustomItemType.DomainExpansion, new Color(0.5f, 0, 0.5f) },
+            { CustomItemType.Ncat, new Color(0.5f, 0, 0.5f) },
+            { CustomItemType.Strangegun, new Color(1, 0, 1) },
+            { CustomItemType.GrenadeFlinger, new Color(1, 0.6f, 1) },
         };
 
         public static Dictionary<CustomItemType, Tuple<float, float>> GlowPowers = new Dictionary<CustomItemType, Tuple<float, float>>
@@ -687,6 +869,7 @@ namespace secret_project
             { CustomItemType.NullGrenade, Tuple.Create(5f, 6f) },
             { CustomItemType.Infininade, Tuple.Create(5f, 25f) },
             { CustomItemType.Crasher, Tuple.Create(float.MaxValue, float.MaxValue) },
+            { CustomItemType.Ncat, Tuple.Create(1000f, 1000f) },
         };
 
         public static Dictionary<CustomItemType, float> DamageValues = new Dictionary<CustomItemType, float>
@@ -694,7 +877,8 @@ namespace secret_project
             { CustomItemType.BlindingBarrage, 5 },
             { CustomItemType.Invisgun, 97 },
             { CustomItemType.ShatteringJustice, 75 },
-            { CustomItemType.SiphoningSyringe, 17.5f }
+            { CustomItemType.SiphoningSyringe, 17.5f },
+            { CustomItemType.Trapper, 1 }
         };
 
         public static Dictionary<CustomItemType, float> SpawnWeights = new Dictionary<CustomItemType, float>
@@ -703,7 +887,7 @@ namespace secret_project
             { CustomItemType.MiniNukeLauncher, 0.1f },
             { CustomItemType.Freaky500, 100 },
             { CustomItemType.Heroin, 60 },
-            { CustomItemType.MitzeyScream, 0.1f },
+            { CustomItemType.MitzeyScream, 0.001f },
             { CustomItemType.LightningTest, 5 },
             { CustomItemType.MinionGun, 250 },
             { CustomItemType.Grappler, 1 },
@@ -717,7 +901,6 @@ namespace secret_project
             { CustomItemType.Invisgun, 225 },
             { CustomItemType.StatBuffer, 400 },
             { CustomItemType.SiphoningSyringe, 100 },
-            { CustomItemType.TougherTimes, 200 },
             { CustomItemType.PersonalShieldGenerator, 200 },
             { CustomItemType.TsarBomb, 1 },
             { CustomItemType.Infininade, 100 },
@@ -771,5 +954,11 @@ namespace secret_project
         Swapper,
         Hallucination,
         SuicideBomb,
+        EmergencyCoconutShield,
+        Trapper,
+        DomainExpansion,
+        Ncat,
+        Strangegun,
+        GrenadeFlinger,
     }
 }
