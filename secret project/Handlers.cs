@@ -42,6 +42,10 @@ using InventorySystem.Items.Firearms.Modules;
 using System.Text;
 using Respawning;
 using System.Xml.Linq;
+using Mirror.LiteNetLib4Mirror;
+using Decals;
+using InventorySystem.Items.Firearms.BasicMessages;
+using Utils.Networking;
 
 namespace secret_project
 {
@@ -725,6 +729,28 @@ namespace secret_project
             }
         }
 
+        public static float GetPing(Player target)
+        {
+            int connid = target.ReferenceHub.networkIdentity.connectionToClient.connectionId;
+
+            float ping = LiteNetLib4MirrorServer.Peers[connid].Ping * 2;
+
+            return ping;
+        }
+
+        public static void PlaceBulletHoleManually(Vector3 origin, Vector3 direction, DecalPoolType decal)
+        {
+            new GunDecalMessage(origin, direction, decal).SendToAuthenticated(0);
+        }
+
+        public static void PlaceBulletHoleManually(Vector3 origin, Vector3 direction, DecalPoolType decal, int amount)
+        {
+            for (int i = 0; i < amount; i++)
+            {
+                new GunDecalMessage(origin, direction, decal).SendToAuthenticated(0);
+            }
+        }
+
         public static void SetScale(this Player play, Vector3 scale)
         {
             ReferenceHub player = play.ReferenceHub;
@@ -733,6 +759,63 @@ namespace secret_project
                 if (player.gameObject.transform.localScale == scale) return;
 
                 player.gameObject.transform.localScale = scale;
+                foreach (ReferenceHub plr in ReferenceHub.AllHubs.Where(n => n.authManager.InstanceMode == CentralAuth.ClientInstanceMode.ReadyClient))
+                {
+                    NetworkServer.SendSpawnMessage(player.networkIdentity, plr.connectionToClient);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex.ToString());
+            }
+        }
+
+        public static void SetScale(this ReferenceHub play, Vector3 scale)
+        {
+            ReferenceHub player = play;
+            try
+            {
+                if (player.gameObject.transform.localScale == scale) return;
+
+                player.gameObject.transform.localScale = scale;
+                foreach (ReferenceHub plr in ReferenceHub.AllHubs.Where(n => n.authManager.InstanceMode == CentralAuth.ClientInstanceMode.ReadyClient))
+                {
+                    NetworkServer.SendSpawnMessage(player.networkIdentity, plr.connectionToClient);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex.ToString());
+            }
+        }
+
+        public static void SetRotation(this Player play, Vector3 rot)
+        {
+            ReferenceHub player = play.ReferenceHub;
+            try
+            {
+                if (player.gameObject.transform.localRotation == Quaternion.Euler(rot)) return;
+
+                player.gameObject.transform.localRotation = Quaternion.Euler(rot);
+                foreach (ReferenceHub plr in ReferenceHub.AllHubs.Where(n => n.authManager.InstanceMode == CentralAuth.ClientInstanceMode.ReadyClient))
+                {
+                    NetworkServer.SendSpawnMessage(player.networkIdentity, plr.connectionToClient);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex.ToString());
+            }
+        }
+
+        public static void SetRotation(this ReferenceHub play, Vector3 rot)
+        {
+            ReferenceHub player = play;
+            try
+            {
+                if (player.gameObject.transform.localRotation == Quaternion.Euler(rot)) return;
+
+                player.gameObject.transform.localRotation = Quaternion.Euler(rot);
                 foreach (ReferenceHub plr in ReferenceHub.AllHubs.Where(n => n.authManager.InstanceMode == CentralAuth.ClientInstanceMode.ReadyClient))
                 {
                     NetworkServer.SendSpawnMessage(player.networkIdentity, plr.connectionToClient);

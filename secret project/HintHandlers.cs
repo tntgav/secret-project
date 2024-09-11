@@ -101,7 +101,7 @@ namespace secret_project
 
         }
 
-        public static async void text(Player plr, int position, string content, float time)
+        public static void text(Player plr, int position, string content, float time)
         {
             InitPlayer(plr);
             ReferenceHub hub = plr.ReferenceHub;

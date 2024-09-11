@@ -174,6 +174,16 @@ namespace secret_project
             }
         }
 
+        [HarmonyPatch(typeof(HealthStat), nameof(HealthStat.MaxValue), MethodType.Getter)]
+        public static class maxhp
+        {
+            public static bool Prefix(ref float __result)
+            {
+                __result = 777;
+                return false;
+            }
+        }
+
         [HarmonyPatch(typeof(Scp1853), nameof(Scp1853.TryGetSpeed))]
         public static class maxspeed1853
         {

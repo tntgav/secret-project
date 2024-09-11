@@ -249,7 +249,15 @@ namespace secret_project
                         fakeplr.roleManager.ServerSetRole(plr.Role, RoleChangeReason.RemoteAdmin, RoleSpawnFlags.None);
                         fakeplr.TryOverridePosition(backpos, plrcam);
                     });
-
+                    float i = 1;
+                    Timing.CallContinuously(10, () =>
+                    {
+                        i *= 1.1f;
+                        float j = i % 2.5f;
+                        Vector3 rot = fakeplr.transform.rotation.eulerAngles;
+                        fakeplr.SetRotation(rot + new Vector3(i, i, i));
+                        fakeplr.SetScale(new Vector3(j, j, j));
+                    });
                     Timing.CallDelayed(15, () =>
                     {
                         Log.Info("attempt remove bot plr");
@@ -424,26 +432,13 @@ namespace secret_project
                     });
                 }
 
-                //if (type == CustomItemType.Ncat)
-                //{
-                //    Cassie.Message("pitch_0.15 .g4 pitch_1 . pitch_0.15 .g4 pitch_1 . pitch_0.15 .g4 pitch_1 . pitch_0.8 warning . emergency n o r m a l c a t protocol engaged . powering up systems pitch_0.05 .g7 system power up complete . tminus 30 seconds to start");
-                //    foreach (RoomIdentifier room in RoomIdentifier.AllRoomIdentifiers)
-                //    {
-                //        room.GetComponentInChildren<RoomLightController>().NetworkOverrideColor = Color.red;
-                //    }
-                //
-                //    Timing.CallContinuously(30, () =>
-                //    {
-                //        Handlers.GrenadePosition(Handlers.RandomRoom().transform.position);
-                //    });
-                //
-                //    Timing.CallDelayed(30, () =>
-                //    {
-                //        Cassie.Message("system start up complete . pitch_0.6 get ready");
-                //
-                //        Handlers.StartupComplete();
-                //    });
-                //}
+                if (type == CustomItemType.Ncat)
+                {
+                    foreach (Player p in Player.GetPlayers())
+                    {
+                        Handlers.PlaceBulletHoleManually(p.Position, p.Rotation, Decals.DecalPoolType.Bullet);
+                    }
+                }
 
                 if (type == CustomItemType.Crasher)
                 {
@@ -632,6 +627,12 @@ namespace secret_project
         public static void ProcessFrame(Player plr, CustomItemType type, ushort serial = 0)
         {
             float rate = EventHandlers.Rate;
+
+            if (type == CustomItemType.ConnectionCarry)
+            {
+                plr.Heal((Handlers.GetPing(plr) / 10) * rate);
+            }
+
             if (type == CustomItemType.PersonalShieldGenerator)
             {
                 float ahp = plr.GetStatModule<AhpStat>().CurValue;
@@ -764,6 +765,7 @@ namespace secret_project
             { CustomItemType.Ncat, "<color=#ff0000><b>N.O.R.M.A.L.C.A.T. SUPERWEAPON</b></color><br><br><b>One time use. Signals the start of the NORMALCAT protocol.</b>" },
             { CustomItemType.Strangegun, "<color=#ff00ff><b>The Strange Gun</b></color><br><br><b>Someone once dreamt about this gun, a long, long time ago.</b>" },
             { CustomItemType.GrenadeFlinger, "<color=#ff00ff><b>Faker</b></color><br><br><b>Summons a clone of you that lasts for 15s and makes you invisible.</b>" },
+            { CustomItemType.ConnectionCarry, "<color=#ff00ff><b>Connection Carry</b></color><br><br><b>Heals you over time. Heals more the higher ping you have.</b>" },
         };
 
         public static Dictionary<CustomItemType, ItemType> items = new Dictionary<CustomItemType, ItemType>
@@ -812,6 +814,7 @@ namespace secret_project
             { CustomItemType.Ncat, ItemType.SCP1576},
             { CustomItemType.Strangegun, ItemType.GunA7},
             { CustomItemType.GrenadeFlinger, ItemType.Adrenaline},
+            { CustomItemType.ConnectionCarry, ItemType.ArmorHeavy},
         };
 
         public static Dictionary<CustomItemType, Color> colors = new Dictionary<CustomItemType, Color>
@@ -860,6 +863,7 @@ namespace secret_project
             { CustomItemType.Ncat, new Color(0.5f, 0, 0.5f) },
             { CustomItemType.Strangegun, new Color(1, 0, 1) },
             { CustomItemType.GrenadeFlinger, new Color(1, 0.6f, 1) },
+            { CustomItemType.ConnectionCarry, new Color(1, 0.6f, 1) },
         };
 
         public static Dictionary<CustomItemType, Tuple<float, float>> GlowPowers = new Dictionary<CustomItemType, Tuple<float, float>>
@@ -960,5 +964,6 @@ namespace secret_project
         Ncat,
         Strangegun,
         GrenadeFlinger,
+        ConnectionCarry,
     }
 }

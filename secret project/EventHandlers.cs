@@ -15,6 +15,7 @@ using MapGeneration;
 using MapGeneration.Distributors;
 using MEC;
 using Mirror;
+using Mirror.LiteNetLib4Mirror;
 using PlayerRoles;
 using PlayerRoles.FirstPersonControl;
 using PlayerRoles.PlayableScps.Scp049;
@@ -347,6 +348,7 @@ namespace secret_project
         [PluginEvent(ServerEventType.PlayerReport)]
         public void RemoteAssassination(PlayerReportEvent ev)
         {
+            
             if (ev.Player.Team == Team.SCPs)
             {
                 ev.Target.Damage(new DisruptorDamageHandler(new Footprint(ev.Player.ReferenceHub), float.MaxValue));
